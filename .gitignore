@@ -1,0 +1,6 @@
+
+*Docs/
+Docs/credentials.cfg
+*.idea
+.idea/*
+
