@@ -233,7 +233,7 @@ def main():
 
 
 
-    # Construct URL to query the logs
+    # Construct URL to query the logs. The 'add' word must trigger report creation
     # TODO
     # _____________________________________________
     statsCreateReportURL = "https://{serverName}/imap/admin/usagereports/add".format(serverName=serverName)
@@ -269,16 +269,19 @@ def main():
     # Report is created on the server. No response is needed. The variable isn't used afterward for that reason.
     createReportResult = postAndLoadJSON(statsCreateReportURL, token, postdata)
 
-    # Query the newly created report
+    # Query the newly created report. The 'data' word must cause the contents to be accessed and returned
     statsQueryReportURL = "https://{serverName}/imap/admin/usagereports/{reportName}/data".format(serverName=serverName,
                                                                                                   reportName=reportName)
 
-    #
+    # TODO: Why is this needed?
     postdata = {'filter': {'machines': '*'}}
+
+    # Make call to query report url, get the report content, and write the report to a csv file at the indicated path
     postAndLoadCSV(statsQueryReportURL, CSV_OUTPUT_FILE_PATH, token, postdata)
     
+    # Cleanup (delete) statistics report so that it can be recreated the next time.
+    #   Build the url and make the call to the url for deleting.
     print("Before delete")
-    # Cleanup (delete) statistics report
     statsDeleteReportURL = "https://{serverName}/imap/admin/usagereports/{reportName}/delete".format(reportName=serverName,
                                                                                                      reportName=reportName)
     deleteReportResult = postAndLoadJSON(statsDeleteReportURL, token)
@@ -299,8 +302,7 @@ def dt2ts(dt):
 def postAndLoadCSV(url, fileName, token = None, postdata = None):
     """
     Appears to create a json object containing a token and format = csv, hits the url (the query report url per its
-    only implementation),
-    :return:
+    only implementation), open the output file, write the report content to the file, and close out.
     """
     if not postdata:    # None evaluates to False
         postdata = {}
