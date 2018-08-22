@@ -219,6 +219,8 @@ def main():
     #   TODO cont...: url's. Also need all service url's
     # _____________________________________________
     # Gets a list containing all folder url's AND all service url's from within all of those folders
+    # It is passed to the server in the statsDefinition object and indicates the resourceURIs for which metrics will
+    #   be built in the query process
     services = getServiceList(serverName, serverPort, token)
     # _____________________________________________
 
@@ -233,12 +235,11 @@ def main():
 
 
 
-    # Construct URL to query the logs. The 'add' word must trigger report creation
+    # Construct URL to create a new report. The 'add' word must trigger report creation
     # TODO
     # _____________________________________________
     statsCreateReportURL = "https://{serverName}/imap/admin/usagereports/add".format(serverName=serverName)
     # _____________________________________________
-
 
     # Create unique name for temp report
     reportName = uuid.uuid4().hex
