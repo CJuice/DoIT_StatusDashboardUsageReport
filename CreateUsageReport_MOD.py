@@ -55,6 +55,60 @@ def main():
     # serverPort = 443
 
     # CLASSES
+    class AdminObject:
+        GEODATA_ROOT = "https://geodata.md.gov/imap/rest/services"
+        # MACHINE_ROOT = "arcgis"
+        REST_URL_ENDING = "arcgis/rest/services"
+
+        def __init__(self, machine_object):
+            self.rest_url_machine_root = machine_object
+
+        @property
+        def rest_url_machine_root(self):
+            return self.__rest_url_machine_root
+
+        @rest_url_machine_root.setter
+        def rest_url_machine_root(self, value):
+            self.__rest_url_machine_root = clean_url_slashes(os.path.join(machine_object.root_url, AdminObject.REST_URL_ENDING))
+
+    class FolderObject(AdminObject):
+        """
+        Example: 'https://gis-ags-imap02p.mdgov.maryland.gov:6443/arcgis/rest/services/Weather'
+        FOLDER_URL_ENDING = "{folder}"
+        """
+
+        def __init__(self, folder, machine_object):
+            super().__init__(machine_object=machine_object)     # Needs to be instantiated before folder_url
+            self.folder_machine_url = folder
+            self.folder_geodata_url = folder
+
+        @property
+        def folder_geodata_url(self):
+            return self.__folder_geodata_url
+
+        @folder_geodata_url.setter
+        def folder_geodata_url(self, value):
+            self.__folder_geodata_url = clean_url_slashes(os.path.join(AdminObject.GEODATA_ROOT, value))
+
+        @property
+        def folder_machine_url(self):
+            return self.__folder_machine_url
+
+        @folder_machine_url.setter
+        def folder_machine_url(self, value):
+            self.__folder_machine_url = clean_url_slashes(os.path.join(self.rest_url_machine_root, value))
+
+    class ServiceObject(AdminObject):
+        """
+        Example: 'https://gis-ags-imap02p.mdgov.maryland.gov:6443/arcgis/rest/services/Weather/MD_StormSurge/MapServer'
+        REST_URL_END = "{folder}/{service_name}/{type}
+        """
+
+        def __init__(self, folder, service_name, type, machine_object):
+            self.folder = folder
+            self.service_name = service_name
+            self.type = type
+            super().__init__(machine_object=machine_object)
 
     class MachineObject:
         """Created to store machine properties and values."""
@@ -72,12 +126,13 @@ def main():
             self.admin_services_url = admin_services_url
             self.token = token
             self.folders_list = folders
+
         def __str__(self):
             """
             Overriding the __str__ builtin to control the appearance of the machine object print-out for readability.
             :return: string
             """
-            return f"{self.machine_name}-->\n\t{self.root_url}\n\t{self.services_url}\n\t{self.token}\n\t{self.folders_list}"
+            return f"{self.machine_name}-->\n\t{self.root_url}\n\t{self.admin_services_url}\n\t{self.token}\n\t{self.folders_list}"
 
     class NotJSONException(Exception):
         """Raised when the url for the request is malformed for our purposes and the server returns html, not json"""
@@ -128,6 +183,7 @@ def main():
                 if "html" in response.headers["Content-Type"]:
                     raise NotJSONException
                 response_json = response.json()
+                print(response_json)
             except json.decoder.JSONDecodeError as jde:
                 print("Error decoding response to json: {}".format(jde))
                 print(response)
@@ -138,6 +194,7 @@ def main():
                 print(response.headers)
                 print(response.text)
                 exit()
+            # TODO: The below portion should be abstracted to another function. Return the response and then interrogate the response. The While loop design required it to be together but now it doesn't need to be
             try:
                 value = response_json[search_key]
             except KeyError as ke:
@@ -183,23 +240,24 @@ def main():
     token_params = create_params_for_request(token_action="getToken")
     token = get_value_from_response(url=generate_token_url, params=token_params, search_key="token")
     print(token)
+
     # _____________________________________________
     # token = getToken(USERNAME, PASSWORD, serverName, serverPort)
     # if token == "":
     #     print("Could not generate a token with the user name and password provided.")
     #     return
     # _____________________________________________
-    #                                                                                                                       WORKING UP TO HERE
 
 
     # Get list of all services in all folders on sites
     # TODO
     #   Make a request for secure services using the token
     request_params_result = create_params_for_request(token_action=token)
-    admin_services_full_url = clean_url_slashes(os.path.join(root_server_url, SERVER_URL_ADMIN_SERVICES))
+    admin_services_full_url = clean_url_slashes(os.path.join(root_server_url, SERVER_URL_ADMIN_SERVICES))   # TODO: Refactorable?
     folders = get_value_from_response(url=admin_services_full_url,
                                       params=request_params_result,
                                       search_key="folders")
+    print(folders)
 
     #   Remove certain folders (System and Utilities per Jessie), and append entry for root folder
     # FIXME: Noticed that Jessie also included 'GeoprocessingServices' in folders to exclude. Issue?
@@ -207,6 +265,7 @@ def main():
     folders = list(set(folders) - set(remove_folders))
     folders.append("")
     folders.sort()
+    print(folders)
 
     #   Create a machine object for the selected ArcGIS Server machine.
     machine_object = MachineObject(machine_name=machine,
@@ -214,24 +273,34 @@ def main():
                                    admin_services_url=admin_services_full_url,
                                    token=token,
                                    folders=folders)
+    print(machine_object)
+
+    # Create an admin object. Seems like this could be refactored to incorporate some script constants and more
+    # admin_object = AdminObject(machine_object=machine_object)
+    # print(admin_object.rest_url_root)
+
 
     # TODO: previous functionality returned a list of all folder url's AND all service url's. Have folder names, need
     #   TODO cont...: url's. Also need all service url's
+    # list_of_folder_urls = [clean_url_slashes(os.path.join(machine_object.root_url, "arcgis/rest/services/", folder)) for folder in machine_object.folders_list]
+    list_of_folder_objects = [FolderObject(folder=folder, machine_object=machine_object) for folder in machine_object.folders_list]
+
+    for fold_obj in list_of_folder_objects:
+        print(fold_obj.folder_machine_url)
+        print(fold_obj.folder_geodata_url)
+
+    exit()  #                                                                                                         WORKING UP TO HERE
+
+    # TODO: To build the list of service url's I need not only the folder name but the response json with a 'services' key but the way this is built you can only get value for one search key per request so would have to make another request or redesign
+
+
+
     # _____________________________________________
     # Gets a list containing all folder url's AND all service url's from within all of those folders
     # It is passed to the server in the statsDefinition object and indicates the resourceURIs for which metrics will
     #   be built in the query process
     services = getServiceList(serverName, serverPort, token)
     # _____________________________________________
-
-
-
-
-
-
-
-
-
 
 
 
@@ -255,14 +324,14 @@ def main():
     # TODO
     # _____________________________________________
     statsDefinition = { 'reportname' : reportName,
-           'since' : 'CUSTOM',
-           'from': int(fromTime),
-           'to': int(toTime),
-           'queries' : [{ 'resourceURIs' : services,
-           'metrics' : ['RequestCount'] }],
-           'aggregationInterval' : 60,                        
-           'metadata' : { 'temp' : True,
-           'tempTimer' : 1454109613248 } }
+                        'since' : 'CUSTOM',
+                        'from': int(fromTime),
+                        'to': int(toTime),
+                        'queries' : [{ 'resourceURIs' : services,
+                                       'metrics' : ['RequestCount'] }],
+                        'aggregationInterval' : 60,
+                        'metadata' : { 'temp' : True,
+                                       'tempTimer' : 1454109613248 } }
 
     # Create the json object to be posted to the server for creating the report
     postdata = {'usagereport': json.dumps(statsDefinition)}
@@ -279,14 +348,14 @@ def main():
 
     # Make call to query report url, get the report content, and write the report to a csv file at the indicated path
     postAndLoadCSV(statsQueryReportURL, CSV_OUTPUT_FILE_PATH, token, postdata)
-    
+
     # Cleanup (delete) statistics report so that it can be recreated the next time.
     #   Build the url and make the call to the url for deleting.
     print("Before delete")
-    statsDeleteReportURL = "https://{serverName}/imap/admin/usagereports/{reportName}/delete".format(reportName=serverName,
+    statsDeleteReportURL = "https://{serverName}/imap/admin/usagereports/{reportName}/delete".format(serverName=serverName,
                                                                                                      reportName=reportName)
     deleteReportResult = postAndLoadJSON(statsDeleteReportURL, token)
-    
+
     print("Export complete!")
 
     return
