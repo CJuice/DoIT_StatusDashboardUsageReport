@@ -38,7 +38,8 @@ def main():
     config = configparser.ConfigParser()
     config.read(filenames=CREDENTIALS_PATH)
 
-    CSV_OUTPUT_FILE_PATH = r"D:\inetpub\wwwroot\DOIT\StatusDashboard\temp\UsageStatistics.csv"
+    # CSV_OUTPUT_FILE_PATH = r"D:\inetpub\wwwroot\DOIT\StatusDashboard\temp\UsageStatistics.csv"  # DOIT folder DNE on 01d
+    CSV_OUTPUT_FILE_PATH = r"D:\scripts\StatusDashboard\UsageReport_MOD_testing\UsageStatistics.csv"
     PASSWORD = config["ags_server_credentials"]["password"]
     SERVER_MACHINE_NAMES = {0: config['ags_prod_machine_names']["machine1"],
                             1: config['ags_prod_machine_names']["machine2"],
@@ -56,15 +57,20 @@ def main():
 
     # CLASSES
     class AdminObject:
+        # TODO: Some of these are not common to all objects and should not be in Admin. Refactor
         ADMIN_SERVICES_ENDING = "arcgis/admin/services"
         GEODATA_ROOT = "https://geodata.md.gov/imap/rest/services"
         REST_URL_ENDING = "arcgis/rest/services"
         GENERATE_TOKEN_ENDING = "arcgis/admin/generateToken"
-        USAGE_REPORT_ENDING__CREATE = "admin/usagereports/add"
+        USAGE_REPORT_ENDING__CREATE = "admin/usagereports/add"  # 'add' is trigger for report creation
+        USAGE_REPORT_ENDING__QUERY = "admin/usagereports/{report_name}/data"  # 'data' is trigger for querying
+        USAGE_REPORT_ENDING__DELETE = "admin/usagereports/{report_name}/delete"  # 'delete' is trigger for deleting report
 
         def __init__(self, root_machine_url):
             self.admin_services_url = root_machine_url
             self.usage_reports_url__create = root_machine_url
+            self.usage_reports_url__query = root_machine_url
+            self.usage_reports_url__delete = root_machine_url
             self.rest_url_machine_root = root_machine_url
 
         @property
@@ -82,6 +88,22 @@ def main():
         @usage_reports_url__create.setter
         def usage_reports_url__create(self, value):
             self.__usage_reports_url__create = f"{value}/{AdminObject.USAGE_REPORT_ENDING__CREATE}"
+
+        @property
+        def usage_reports_url__delete(self):
+            return self.__usage_reports_url__delete
+
+        @usage_reports_url__delete.setter
+        def usage_reports_url__delete(self, value):
+            self.__usage_reports_url__delete = f"{value}/{AdminObject.USAGE_REPORT_ENDING__DELETE}"
+
+        @property
+        def usage_reports_url__query(self):
+            return self.__usage_reports_url__query
+
+        @usage_reports_url__query.setter
+        def usage_reports_url__query(self, value):
+            self.__usage_reports_url__query = f"{value}/{AdminObject.USAGE_REPORT_ENDING__QUERY}"
 
         @property
         def rest_url_machine_root(self):
@@ -161,29 +183,65 @@ def main():
 
     class ReportObject(AdminObject):
         """"""
-        def __init__(self, root_machine_url, master_urls_list):
+        def __init__(self, root_machine_url, master_urls_list, basic_request_json):
             super().__init__(root_machine_url)
             self.report_name_id = uuid.uuid4().hex
             self.now_time = datetime.datetime.utcnow()
             self.to_time = dt2ts(self.now_time) * 1000
-            self.from_time = dt2ts(self.now_time - datetime.timedelta(hours=48)) * 1000
-            self.json_definition = master_urls_list
+            self.from_time = dt2ts(self.now_time - datetime.timedelta(hours=48)) * 1000 # TODO: Evaluate dt2ts. It is a function Jessie created.
+            self.master_urls_list = master_urls_list
+            self.json_definition = None
+            self.report_json_params = basic_request_json
+            # self.report_query_params = None
+            self.report_url_query = None
+            self.report_url_delete = None
+
+        @property
+        def report_url_delete(self):
+            return self.__report_url_delete
+
+        @report_url_delete.setter
+        def report_url_delete(self, value):
+            delete_url = self.usage_reports_url__delete.format(report_name=self.report_name_id)
+            # self.__report_url_delete = self.usage_reports_url__delete.format(report_name=self.report_name_id)
+            self.__report_url_delete = delete_url
+
+        @property
+        def report_url_query(self):
+            return self.__report_url_query
+
+        @report_url_query.setter
+        def report_url_query(self, value):
+            query_url = self.usage_reports_url__query.format(report_name=self.report_name_id)
+            # self.__report_url_query = self.usage_reports_url__query.format(report_name=self.report_name_id)
+            self.__report_url_query = query_url
+
         @property
         def json_definition(self):
             return self.__json_definition
 
         @json_definition.setter
         def json_definition(self, value):
+            # Create report JSON definition. This json object goes into the json object submitted to the server.
+            #   The object details indicate what is to be put into the report when it is built
             # 'resourceURIs' is a list of all service and folder urls per Jessie design
             self.__json_definition = {'reportname': self.report_name_id,
                                       'since': 'CUSTOM',
                                       'from': int(self.from_time),
                                       'to': int(self.to_time),
-                                      'queries': [{'resourceURIs': value,
+                                      'queries': [{'resourceURIs': self.master_urls_list,
                                                    'metrics': ['RequestCount']}],
                                       'aggregationInterval': 60,
                                       'metadata': {'temp': True,
                                                    'tempTimer': 1454109613248}}
+        @property
+        def report_json_params(self):
+            return self.__report_json_params
+
+        @report_json_params.setter
+        def report_json_params(self, value):
+            value.update(self.json_definition)
+            self.__report_json_params = value
 
     class ServiceObject(AdminObject):
         """
@@ -247,18 +305,22 @@ def main():
             return f"SERVICE: {self.service_name}-->\n\ttype = {self.service_type}\n\tfolder = {self.folder}"
 
     # FUNCTIONS
-    def create_params_for_request(token_action=None):
+    def create_params_for_request(token_action=None, json_payload=None, format="json"):
         """
+        TODO
         Create parameters to be submitted with the request.
         :param token_action: route to be taken when creating the parameters
         :return: dictionary of parameters
         """
-        if token_action == None:
-            values = {'f': 'json'}
+        if token_action == None and json_payload == None:
+            values = {'f': format}
         elif token_action == "getToken":
-            values = {'username': USERNAME, 'password': PASSWORD, 'client': 'requestip', 'f': 'json'}
+            values = {'username': USERNAME, 'password': PASSWORD, 'client': 'requestip', 'f': format}
+        elif token_action != None and json_payload != None:
+            values = {'token': token_action, 'f': format}
+            values.update(json_payload)
         else:
-            values = {'token': token_action, 'f': 'json'}
+            values = {'token': token_action, 'f': format}
         return values
 
     def clean_url_slashes(url):
@@ -338,7 +400,22 @@ def main():
         else:
             return value
 
-    # FUNCTIONALITY
+    def write_response_to_csv(response, csv_path):
+        # Read the response as a csv
+        csvreader = csv.reader(response)
+        # Open csv file
+        with open(csv_path, 'wb') as csv_file_handler:
+            csvwriter = csv.writer(csv_file_handler, dialect='excel')
+            csvwriter.writerows(csvreader)
+            # csv_file_handler.close()
+            # response.close()
+        return
+
+    def dt2ts(dt):
+        return calendar.timegm(dt.utctimetuple())
+
+
+        # FUNCTIONALITY
     #   Need a machine to which to make a request. Select at random from 4 total since we are bypassing web adaptor.
     machine = SERVER_MACHINE_NAMES[create_random_int(upper_integer=len(SERVER_MACHINE_NAMES))]
     # print(f"MACHINE: {machine}")
@@ -359,7 +436,7 @@ def main():
     # _____________________________________________
 
     # Need to make a secure request for response as JSON to be able to access folders and services details
-    request_params_result = create_params_for_request(token_action=token)
+    request_params_result = create_params_for_request(token_action=token)   # TODO: This basic kind of param creation occurs many times in code. Refactor ?
     admin_services_full_url = clean_url_slashes(os.path.join(root_server_url, AdminObject.ADMIN_SERVICES_ENDING))   # TODO: Refactorable. Added to AdminObject
     folders_request_response = get_response(url=admin_services_full_url, params=request_params_result)
 
@@ -405,14 +482,12 @@ def main():
     # services = getServiceList(serverName, serverPort, token)
     # _____________________________________________
 
-
-    # Need a URL for creating a new report.
-    #   The 'add' word on the end of the url must be the trigger for report creation
-    report_object = ReportObject(root_machine_url=machine_object.root_url, master_urls_list=master_url_list)
+    # Need to create a new report.
+    basic_secure_params = create_params_for_request(token_action=machine_object.token)
+    report_object = ReportObject(root_machine_url=machine_object.root_url, master_urls_list=master_url_list, basic_request_json=basic_secure_params)
 
     # _____________________________________________
     # statsCreateReportURL = "https://{serverName}/imap/admin/usagereports/add".format(serverName=serverName)
-    # _____________________________________________
 
     # Create unique name for temp report
     # reportName = uuid.uuid4().hex
@@ -423,10 +498,6 @@ def main():
     # print(int(toTime))
     # print(int(fromTime))
 
-    # Create report JSON definition. This json object goes into the json object submitted to the server. The object
-    #   details indicate what is to be put into the report when it is built
-    # TODO
-    # _____________________________________________
     # statsDefinition = { 'reportname' : reportName,
     #                     'since' : 'CUSTOM',
     #                     'from': int(fromTime),
@@ -436,33 +507,69 @@ def main():
     #                     'aggregationInterval' : 60,
     #                     'metadata' : { 'temp' : True,
     #                                    'tempTimer' : 1454109613248 } }
+    # _____________________________________________
 
-    exit()  #                                                                                                         WORKING UP TO HERE
-    # Create the json object to be posted to the server for creating the report
-    postdata = {'usagereport': json.dumps(statsDefinition)}
+
+
+    # post_data = {'usagereport': report_object.json_definition}
+    # post_data = {'usagereport': json.dumps(report_object.json_definition)}
+    # print(type(report_object.json_definition))              # dict
+    # print(type(json.dumps(report_object.json_definition)))  # string
+    # report_params = create_params_for_request(token_action=machine_object.token, json_payload=post_data)
+
+
+
 
     # Report is created on the server. No response is needed. The variable isn't used afterward for that reason.
-    createReportResult = postAndLoadJSON(statsCreateReportURL, token, postdata)
+    get_response(url=report_object.admin_services_url, params=report_object.report_json_params)
+
+
+    # _____________________________________________
+    # Create the json object to be posted to the server for creating the report
+    # postdata = {'usagereport': json.dumps(statsDefinition)}
+
+    # Report is created on the server. No response is needed. The variable isn't used afterward for that reason.
+    # createReportResult = postAndLoadJSON(statsCreateReportURL, token, postdata)
 
     # Query the newly created report. The 'data' word must cause the contents to be accessed and returned
-    statsQueryReportURL = "https://{serverName}/imap/admin/usagereports/{reportName}/data".format(serverName=serverName,
-                                                                                                  reportName=reportName)
+    # statsQueryReportURL = "https://{serverName}/imap/admin/usagereports/{reportName}/data".format(serverName=serverName,
+    #                                                                                               reportName=reportName)
+    # _____________________________________________
+
+
+    # Need to get the report contents using the query url
+    post_data_query = {'filter': {'machines': '*'}}  # TODO: This is from Jessie. Not certain of its function and if it will work with the machine name model
+    report_query_params = create_params_for_request(token_action=machine_object.token, json_payload=post_data_query, format='csv')
+    print(report_object.report_url_query)
+    print(report_query_params)
+    report_query_response = get_response(url=report_object.report_url_query, params=report_query_params)
+
+    # Need to write the report content to csv file
+    write_response_to_csv(response=report_query_response, csv_path=CSV_OUTPUT_FILE_PATH)
+
+    # Need to delete the report from the server to reduce bloat
+    report_delete_params = create_params_for_request(token_action=machine_object.token)
+    get_response(url=report_object.report_url_delete, params=report_delete_params)
+
+    exit()  #                                                                                                         WORKING UP TO HERE
 
     # TODO: Why is this needed?
-    postdata = {'filter': {'machines': '*'}}
+    # _____________________________________________
+    # post_data_query = {'filter': {'machines': '*'}}
 
     # Make call to query report url, get the report content, and write the report to a csv file at the indicated path
-    postAndLoadCSV(statsQueryReportURL, CSV_OUTPUT_FILE_PATH, token, postdata)
+    # postAndLoadCSV(statsQueryReportURL, CSV_OUTPUT_FILE_PATH, token, post_data_query)
 
     # Cleanup (delete) statistics report so that it can be recreated the next time.
     #   Build the url and make the call to the url for deleting.
-    print("Before delete")
-    statsDeleteReportURL = "https://{serverName}/imap/admin/usagereports/{reportName}/delete".format(serverName=serverName,
-                                                                                                     reportName=reportName)
-    deleteReportResult = postAndLoadJSON(statsDeleteReportURL, token)
+    # print("Before delete")
+    # statsDeleteReportURL = "https://{serverName}/imap/admin/usagereports/{reportName}/delete".format(serverName=serverName,
+    #                                                                                                  reportName=reportName)
+    # deleteReportResult = postAndLoadJSON(statsDeleteReportURL, token)
+    # _____________________________________________
+
 
     print("Export complete!")
-
     return
 
 
@@ -470,171 +577,170 @@ def main():
 
 
 
-def dt2ts(dt):
-    return calendar.timegm(dt.utctimetuple())  
-
-# A function that makes an HTTP POST request and returns the result JSON object
-def postAndLoadCSV(url, fileName, token = None, postdata = None):
-    """
-    Appears to create a json object containing a token and format = csv, hits the url (the query report url per its
-    only implementation), open the output file, write the report content to the file, and close out.
-    """
-    if not postdata:    # None evaluates to False
-        postdata = {}
-
-    # Add token to POST data if not already present and supplied
-    if token and 'token' not in postdata:
-        postdata['token'] = token
-
-    # Add format specifier to POST data if not already present. This is where the format is set to csv.
-    if 'f' not in postdata:
-        postdata['f'] = 'csv'
-    
-    # Encode data and POST to server
-    postdata = urllib.urlencode(postdata)
-    response = urllib2.urlopen(url, data=postdata)
-
-    print('post data')
-    if (response.getcode() != 200):
-        response.close()
-        raise Exception('Error performing request to {0}'.format(url))
-
-    # Read the response as a csv
-    csvreader = csv.reader(response)
-
-    # Open output file
-    output = open(fileName, 'wb')
-    csvwriter = csv.writer(output, dialect='excel')
-    csvwriter.writerows(csvreader)
-    output.close()  
-    response.close()
-    
-    return
 
 
 # A function that makes an HTTP POST request and returns the result JSON object
-def postAndLoadJSON(url, token=None, postdata=None):
-    """
-    Appears to make a request to server url, includes token and format as json, and returns response as json object.
-    """
-    if not postdata:
-        postdata = {}
+# def postAndLoadCSV(url, fileName, token = None, postdata = None):
+#     """
+#     Appears to create a json object containing a token and format = csv, hits the url (the query report url per its
+#     only implementation), open the output file, write the report content to the file, and close out.
+#     """
+#     if not postdata:    # None evaluates to False
+#         postdata = {}
+#
+#     # Add token to POST data if not already present and supplied
+#     if token and 'token' not in postdata:
+#         postdata['token'] = token
+#
+#     # Add format specifier to POST data if not already present. This is where the format is set to csv.
+#     if 'f' not in postdata:
+#         postdata['f'] = 'csv'
+#
+#     # Encode data and POST to server
+#     postdata = urllib.urlencode(postdata)
+#     response = urllib2.urlopen(url, data=postdata)
+#
+#     print('post data')
+#     if (response.getcode() != 200):
+#         response.close()
+#         raise Exception('Error performing request to {0}'.format(url))
+#
+#     # # Read the response as a csv
+#     # csvreader = csv.reader(response)
+#     #
+#     # # Open output file
+#     # output = open(fileName, 'wb')
+#     # csvwriter = csv.writer(output, dialect='excel')
+#     # csvwriter.writerows(csvreader)
+#     # output.close()
+#     # response.close()
+#     #
+#     # return
 
-    # Add token to POST data if not already present and supplied
-    if token and 'token' not in postdata:
-        postdata['token'] = token
 
-    # Add JSON format specifier to POST data if not already present
-    if 'f' not in postdata:
-        postdata['f'] = 'json'
-    
-    # Encode data and POST to server
-    postdata = urllib.urlencode(postdata)
-    response = urllib2.urlopen(url, data=postdata)
-    print('post data')
-
-    if response.getcode() != 200:
-        response.close()
-        raise Exception('Error performing request to {0}'.format(url))
-
-    data = response.read()
-    response.close()
-    print('postandloadjson')
-
-    # Check that data returned is not an error object
-    if not assertJsonSuccess(data):          
-        raise Exception("Error returned by operation. " + data)
-
-    # Deserialize response into Python object
-    return json.loads(data)
+# A function that makes an HTTP POST request and returns the result JSON object
+# def postAndLoadJSON(url, token=None, postdata=None):
+#     """
+#     Appears to make a request to server url, includes token and format as json, and returns response as json object.
+#     """
+#     if not postdata:
+#         postdata = {}
+#
+#     # Add token to POST data if not already present and supplied
+#     if token and 'token' not in postdata:
+#         postdata['token'] = token
+#
+#     # Add JSON format specifier to POST data if not already present
+#     if 'f' not in postdata:
+#         postdata['f'] = 'json'
+#
+#     # Encode data and POST to server
+#     postdata = urllib.urlencode(postdata)
+#     response = urllib2.urlopen(url, data=postdata)
+#     print('post data')
+#
+#     if response.getcode() != 200:
+#         response.close()
+#         raise Exception('Error performing request to {0}'.format(url))
+#
+#     data = response.read()
+#     response.close()
+#     print('postandloadjson')
+#
+#     # Check that data returned is not an error object
+#     if not assertJsonSuccess(data):
+#         raise Exception("Error returned by operation. " + data)
+#
+#     # Deserialize response into Python object
+#     return json.loads(data)
 
 
 # A function that enumerates all services in all folders on site
-def getServiceList(serverName, serverPort, token):
-    """
-    Appears to hit the root system folder, get a list of all folder names, hit each folder url, get a list of service
-    objects, and build a list of folder url's AND all service
-    url's.
-    TODO: Unclear why the folder url and the service urls are all in one list ?
-    :return: list of folder urls AND all service urls
-    """
-    rooturl = "https://" + serverName + "/imap/admin/services".format(serverName, serverPort)
-
-    # Making call to admin services url, including a token and format = json, getting back root content as json
-    root = postAndLoadJSON(rooturl, token)
-
-    # Services list will hold folder url's and exact url's to all services
-    services = []
-
-    # Accessing the folders using the 'folders' key in the root json. Is a list of folder names.
-    folders = root['folders']
-
-    # Iterating through folders
-    for folderName in folders:
-
-        # Exclude certain folders
-        if folderName != "System" and folderName != "Utilities" and folderName != "GeoprocessingServices":
-
-            # Append url for each folder of services to a list
-            services.append("services/" + folderName)
-
-            # Builds a folder url based on the imap/admin/services root
-            folderurl = "{rooturl}/{folderName}".format(rooturl=rooturl, folderName=folderName)
-
-            # Make a request to server for contents of folder and get response as json object
-            folder = postAndLoadJSON(folderurl, token)
-
-            # For each service object in the folder, append the full url for the service specific to its service type
-            for service in folder['services']:
-                # eg URL - https://geodata.md.gov/imap/admin/services/Agriculture/MD_AgriculturalDesignations.MapServer
-                services.append("services/{folderName}/{serviceName}.{serviceType}".format(folderName=folderName,
-                                                                                           serviceName=service['serviceName'],
-                                                                                           serviceType=service['type']))
-        
-    return services
+# def getServiceList(serverName, serverPort, token):
+#     """
+#     Appears to hit the root system folder, get a list of all folder names, hit each folder url, get a list of service
+#     objects, and build a list of folder url's AND all service
+#     url's.
+#     TODO: Unclear why the folder url and the service urls are all in one list ?
+#     :return: list of folder urls AND all service urls
+#     """
+#     rooturl = "https://" + serverName + "/imap/admin/services".format(serverName, serverPort)
+#
+#     # Making call to admin services url, including a token and format = json, getting back root content as json
+#     root = postAndLoadJSON(rooturl, token)
+#
+#     # Services list will hold folder url's and exact url's to all services
+#     services = []
+#
+#     # Accessing the folders using the 'folders' key in the root json. Is a list of folder names.
+#     folders = root['folders']
+#
+#     # Iterating through folders
+#     for folderName in folders:
+#
+#         # Exclude certain folders
+#         if folderName != "System" and folderName != "Utilities" and folderName != "GeoprocessingServices":
+#
+#             # Append url for each folder of services to a list
+#             services.append("services/" + folderName)
+#
+#             # Builds a folder url based on the imap/admin/services root
+#             folderurl = "{rooturl}/{folderName}".format(rooturl=rooturl, folderName=folderName)
+#
+#             # Make a request to server for contents of folder and get response as json object
+#             folder = postAndLoadJSON(folderurl, token)
+#
+#             # For each service object in the folder, append the full url for the service specific to its service type
+#             for service in folder['services']:
+#                 # eg URL - https://geodata.md.gov/imap/admin/services/Agriculture/MD_AgriculturalDesignations.MapServer
+#                 services.append("services/{folderName}/{serviceName}.{serviceType}".format(folderName=folderName,
+#                                                                                            serviceName=service['serviceName'],
+#                                                                                            serviceType=service['type']))
+#
+#     return services
     
 #A function to generate a token given username, password and the adminURL.
-def getToken(username, password, serverName, serverPort):
-    # Token URL is typically https://server[:port]/arcgis/admin/generateToken
-    tokenURL = "/imap/admin/generateToken"
-
-    # URL-encode the token parameters
-    params = urllib.urlencode({'username': username, 'password': password, 'client': 'requestip', 'f': 'json'})
-    
-    headers = {"Content-type": "application/x-www-form-urlencoded", "Accept": "text/plain"}
-    
-    # Connect to URL and post parameters
-    httpsConn = httplib.HTTPSConnection(serverName, serverPort)
-    httpsConn.request("POST", tokenURL, params, headers)
-
-    # Read response
-    response = httpsConn.getresponse()
-    print(response.read())
-    if (response.status != 200):
-        httpsConn.close()
-        print("Error while fetching tokens from the admin URL. Please check the URL and try again.")
-        return
-    else:
-        data = response.read()
-        httpsConn.close()
-
-        # Check that data returned is not an error object
-        if not assertJsonSuccess(data): 
-            return
-        
-        # Extract the token from it
-        token = json.loads(data)       
-        return token['token']            
-
-#A function that checks that the input JSON object
+# def getToken(username, password, serverName, serverPort):
+#     # Token URL is typically https://server[:port]/arcgis/admin/generateToken
+#     tokenURL = "/imap/admin/generateToken"
+#
+#     # URL-encode the token parameters
+#     params = urllib.urlencode({'username': username, 'password': password, 'client': 'requestip', 'f': 'json'})
+#
+#     headers = {"Content-type": "application/x-www-form-urlencoded", "Accept": "text/plain"}
+#
+#     # Connect to URL and post parameters
+#     httpsConn = httplib.HTTPSConnection(serverName, serverPort)
+#     httpsConn.request("POST", tokenURL, params, headers)
+#
+#     # Read response
+#     response = httpsConn.getresponse()
+#     print(response.read())
+#     if (response.status != 200):
+#         httpsConn.close()
+#         print("Error while fetching tokens from the admin URL. Please check the URL and try again.")
+#         return
+#     else:
+#         data = response.read()
+#         httpsConn.close()
+#
+#         # Check that data returned is not an error object
+#         if not assertJsonSuccess(data):
+#             return
+#
+#         # Extract the token from it
+#         token = json.loads(data)
+#         return token['token']
+#
+# #A function that checks that the input JSON object
 #  is not an error object.    
-def assertJsonSuccess(data):
-    obj = json.loads(data)
-    if 'status' in obj and obj['status'] == "error":
-        print("Error: JSON object returns an error. " + str(obj))
-        return False
-    else:
-        return True
+# def assertJsonSuccess(data):
+#     obj = json.loads(data)
+#     if 'status' in obj and obj['status'] == "error":
+#         print("Error: JSON object returns an error. " + str(obj))
+#         return False
+#     else:
+#         return True
     
         
 # Script start
