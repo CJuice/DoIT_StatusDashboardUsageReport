@@ -62,9 +62,9 @@ def main():
         GEODATA_ROOT = "https://geodata.md.gov/imap/rest/services"
         REST_URL_ENDING = "arcgis/rest/services"
         GENERATE_TOKEN_ENDING = "arcgis/admin/generateToken"
-        USAGE_REPORT_ENDING__CREATE = "admin/usagereports/add"  # 'add' is trigger for report creation
-        USAGE_REPORT_ENDING__QUERY = "admin/usagereports/{report_name}/data"  # 'data' is trigger for querying
-        USAGE_REPORT_ENDING__DELETE = "admin/usagereports/{report_name}/delete"  # 'delete' is trigger for deleting report
+        USAGE_REPORT_ENDING__CREATE = "arcgis/admin/usagereports/add"  # 'add' is trigger for report creation
+        USAGE_REPORT_ENDING__QUERY = "arcgis/admin/usagereports/{report_name}/data"  # 'data' is trigger for querying
+        USAGE_REPORT_ENDING__DELETE = "arcgis/admin/usagereports/{report_name}/delete"  # 'delete' is trigger for deleting report
 
         def __init__(self, root_machine_url):
             self.admin_services_url = root_machine_url
@@ -193,8 +193,19 @@ def main():
             self.json_definition = None
             self.report_json_params = basic_request_json
             # self.report_query_params = None
+            self.report_url_create = None
             self.report_url_query = None
             self.report_url_delete = None
+
+        @property
+        def report_url_create(self):
+            return self.__report_url_create
+
+        @report_url_create.setter
+        def report_url_create(self, value):
+            create_url = self.usage_reports_url__create.format(report_name=self.report_name_id)
+            # self.__report_url_delete = self.usage_reports_url__delete.format(report_name=self.report_name_id)
+            self.__report_url_create = create_url
 
         @property
         def report_url_delete(self):
@@ -367,6 +378,7 @@ def main():
         try:
             # Jessie discovered "verify" option and set to False to bypass the ssl issue
             response = requests.post(url=url, data=params, verify=False)
+            # print(f"Response Code: {response.status_code}")
         except Exception as e:
             print("Error in response from requests: {}".format(e))
             exit()
@@ -521,9 +533,14 @@ def main():
 
 
     # Report is created on the server. No response is needed. The variable isn't used afterward for that reason.
-    get_response(url=report_object.admin_services_url, params=report_object.report_json_params)
-
-
+    # TODO: Is the report created by my process? NO
+    #   TODO: If I manually paste the printed json into the web interface it works, status is success, and I can see it when I go to the machine.
+    #   TODO: But, I can't hit the report by the url generated in my process for querying the report because my process never creates it
+    print(f"Create URL: {report_object.report_url_create}")
+    print(f"JSON: \n{report_object.report_json_params}")
+    x = get_response(url=report_object.report_url_create, params=report_object.report_json_params)
+    print(x)
+    print(x['status'])
     # _____________________________________________
     # Create the json object to be posted to the server for creating the report
     # postdata = {'usagereport': json.dumps(statsDefinition)}
@@ -538,11 +555,17 @@ def main():
 
 
     # Need to get the report contents using the query url
-    post_data_query = {'filter': {'machines': '*'}}  # TODO: This is from Jessie. Not certain of its function and if it will work with the machine name model
+    # TODO: This is from Jessie. Not certain of its function and if it will work with the machine name model
+    post_data_query = {'filter': {'machines': '*'}}
+    # post_data_query = {'filter': {'machines': [machine_object.machine_name]}}
     report_query_params = create_params_for_request(token_action=machine_object.token, json_payload=post_data_query, format='csv')
     print(report_object.report_url_query)
     print(report_query_params)
+
+
+    # FIXME: It doesn't look like the report is created on the server
     report_query_response = get_response(url=report_object.report_url_query, params=report_query_params)
+    # exit()  #                                                                                                         WORKING UP TO HERE
 
     # Need to write the report content to csv file
     write_response_to_csv(response=report_query_response, csv_path=CSV_OUTPUT_FILE_PATH)
@@ -551,7 +574,6 @@ def main():
     report_delete_params = create_params_for_request(token_action=machine_object.token)
     get_response(url=report_object.report_url_delete, params=report_delete_params)
 
-    exit()  #                                                                                                         WORKING UP TO HERE
 
     # TODO: Why is this needed?
     # _____________________________________________
