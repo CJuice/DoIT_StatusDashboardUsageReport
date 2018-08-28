@@ -533,14 +533,16 @@ def main():
 
 
     # Report is created on the server. No response is needed. The variable isn't used afterward for that reason.
-    # TODO: Is the report created by my process? NO
+    # FIXME: Is the report created by my process? NO
     #   TODO: If I manually paste the printed json into the web interface it works, status is success, and I can see it when I go to the machine.
-    #   TODO: But, I can't hit the report by the url generated in my process for querying the report because my process never creates it
+    #   TODO: But, I can't hit the report by the url generated in my process for querying the report because my process never successfully creates it
     print(f"Create URL: {report_object.report_url_create}")
     print(f"JSON: \n{report_object.report_json_params}")
     x = get_response(url=report_object.report_url_create, params=report_object.report_json_params)
     print(x)
     print(x['status'])
+
+
     # _____________________________________________
     # Create the json object to be posted to the server for creating the report
     # postdata = {'usagereport': json.dumps(statsDefinition)}
@@ -563,9 +565,8 @@ def main():
     print(report_query_params)
 
 
-    # FIXME: It doesn't look like the report is created on the server
+    exit()  #                                                                                                         WORKING UP TO HERE
     report_query_response = get_response(url=report_object.report_url_query, params=report_query_params)
-    # exit()  #                                                                                                         WORKING UP TO HERE
 
     # Need to write the report content to csv file
     write_response_to_csv(response=report_query_response, csv_path=CSV_OUTPUT_FILE_PATH)
