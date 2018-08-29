@@ -452,12 +452,11 @@ def main():
 
     #   Need to make a secure request for response as JSON to be able to access folders and services details
     basic_secure_params = create_params_for_request(token_action=machine_object.token)
-    # request_params_result = create_params_for_request(token_action=token)
     admin_object = AdminObject(root_machine_url=root_server_url)
     folders_request_response = get_response(url=admin_object.admin_services_url, params=basic_secure_params)
 
     #   Need folder names list and to clean list; Remove System & Utilities, & append entry for root folder, per Jessie
-    #   Note: Noticed that Jessie also included 'GeoprocessingServices', but did not in statusdashboard script
+    #   NOTE: Noticed that Jessie also included 'GeoprocessingServices', but did not in statusdashboard script
     folder_names_raw = search_json_for_key(response_json=folders_request_response, search_key="folders")
     remove_folders = ["System", "Utilities", "GeoprocessingServices"]
     folder_names_clean = list(set(folder_names_raw) - set(remove_folders))
@@ -478,21 +477,19 @@ def main():
     for fold_obj in list_of_folder_objects:
 
         # Need a url to which to make a request to learn the services within
-        # service_request_params = create_params_for_request(token_action=token)
         services_request_response = get_response(url=fold_obj.folder_machine_url, params=basic_secure_params)
         services_json = search_json_for_key(response_json=services_request_response, search_key="services")
 
         # Need to store the inventory of services that are within each folder
         for service in services_json:
-            serv_obj = ServiceObject(folder=fold_obj.name,
-                                     service_json=service,
-                                     root_machine_url=machine_object.root_url)
-            fold_obj.service_objects_list.append(serv_obj)
+            service_object = ServiceObject(folder=fold_obj.name,
+                                           service_json=service,
+                                           root_machine_url=machine_object.root_url)
+            fold_obj.service_objects_list.append(service_object)
 
     master_url_list = create_master_url_list(list_of_folder_objects)
 
     # Need to create a new report object for use in generating report on server.
-    # basic_secure_params = create_params_for_request(token_action=machine_object.token)
     report_object = ReportObject(root_machine_url=machine_object.root_url,
                                  master_urls_list=master_url_list,
                                  basic_request_json=basic_secure_params)
@@ -501,6 +498,11 @@ def main():
     print("Creating Report")
     usage_report_params = create_params_for_request(token_action=machine_object.token,
                                                     json_payload=report_object.report_json_params)
+
+    print(usage_report_params)  # TESTING
+    # FIXME: When I use the output params to create a report, and access the data I see "NODATA" in the columns in html
+    # view. It doesn't appear that the JSON is correct or that using the machine specific model is working as desired
+
     get_response(url=report_object.report_url_create, params=usage_report_params)
 
     # Need to get the report contents using the query url
