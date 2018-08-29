@@ -1,4 +1,4 @@
-"""TODO"""
+"""TODO: Doc strings for entire script"""
 # Export total number of requests for all services in a site
 # ArcGIS Server 10.3 or higher
 
@@ -41,7 +41,6 @@ def main():
 
     # CLASSES
     class AdminObject:
-        # TODO: Some of these are not common to all objects and should not be in Admin. Refactor
         ADMIN_SERVICES_ENDING = "arcgis/admin/services"
         GEODATA_ROOT = "https://geodata.md.gov/imap/rest/services"
         REST_URL_ENDING = "arcgis/rest/services"
@@ -225,7 +224,6 @@ def main():
         @report_json_params.setter
         def report_json_params(self, value):
             """
-            TODO
             NOTE: Proved absolutely essential for the usagereport value to be processed by json.dumps(). Received an
             error in response saying 'A JSONObject text must begin with '{' at character 1 of ...'
             :param value:
@@ -326,7 +324,6 @@ def main():
     # FUNCTIONS
     def create_params_for_request(token_action=None, json_payload=None, response_format="json"):
         """
-        TODO
         Create parameters to be submitted with the request.
         :param token_action: route to be taken when creating the parameters
         :param json_payload:
@@ -376,7 +373,6 @@ def main():
 
     def get_response(url, params):
         """
-        TODO
         Submit a request with parameters to a url and inspect the response json for the specified key of interest.
         :param url: url to which to make a request
         :param params: parameters to accompany the request
