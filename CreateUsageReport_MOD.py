@@ -1,25 +1,27 @@
 # Export total number of requests for all services in a site
 # ArcGIS Server 10.3 or higher
 
-# For HTTP calls
-# import httplib
-# import urllib
-# import urllib2
 import json
+
 # For time-based functions
 import time
 import uuid
 import datetime
 import calendar
+
 # For system tools
 import sys
 import os
+
 # For reading passwords without echoing
 import getpass
+
 # For writing csv files
 import csv
+
 import configparser
 import random
+
 import requests
 # urllib3 is included in requests but to manage the InsecureRequestWarning it was also imported directly
 import urllib3
@@ -38,8 +40,9 @@ def main():
     config = configparser.ConfigParser()
     config.read(filenames=CREDENTIALS_PATH)
 
-    # CSV_OUTPUT_FILE_PATH = r"D:\inetpub\wwwroot\DOIT\StatusDashboard\temp\UsageStatistics.csv"  # DOIT folder DNE on 01d
-    CSV_OUTPUT_FILE_PATH = r"D:\scripts\StatusDashboard\UsageReport_MOD_testing\UsageStatistics.csv"
+    # CSV_OUTPUT_FILE_PATH = r"D:\inetpub\wwwroot\DOIT\StatusDashboard\temp\UsageStatistics.csv"  # PRODUCTION. *********DOIT folder DNE on imap01d
+    CSV_OUTPUT_FILE_PATH = r"D:\scripts\StatusDashboard\UsageReport_MOD_testing\UsageStatistics.csv"    # TESTING
+
     PASSWORD = config["ags_server_credentials"]["password"]
     SERVER_MACHINE_NAMES = {0: config['ags_prod_machine_names']["machine1"],
                             1: config['ags_prod_machine_names']["machine2"],
@@ -47,13 +50,7 @@ def main():
                             3: config['ags_prod_machine_names']["machine4"]}
     SERVER_PORT_SECURE = config['ags_prod_machine_names']["secureport"]
     SERVER_ROOT_URL = "https://{machine_name}.mdgov.maryland.gov:{port}"
-    # SERVER_URL_ADMIN_SERVICES = "arcgis/admin/services"
-    # SERVER_URL_GENERATE_TOKEN = "arcgis/admin/generateToken"
     USERNAME = config["ags_server_credentials"]["username"]
-
-    # Ask for server name
-    # serverName = "geodata.md.gov"
-    # serverPort = 443
 
     # CLASSES
     class AdminObject:
@@ -235,23 +232,32 @@ def main():
         def json_definition(self, value):
             # Create report JSON definition. This json object goes into the json object submitted to the server.
             #   The object details indicate what is to be put into the report when it is built
-            # 'resourceURIs' is a list of all service and folder urls per Jessie design
-            self.__json_definition = {'reportname': self.report_name_id,
-                                      'since': 'CUSTOM',
-                                      'from': int(self.from_time),
-                                      'to': int(self.to_time),
-                                      'queries': [{'resourceURIs': self.master_urls_list,
-                                                   'metrics': ['RequestCount']}],
-                                      'aggregationInterval': 60,
-                                      'metadata': {'temp': True,
-                                                   'tempTimer': 1454109613248}}
+            #   'resourceURIs' is a list of all service and folder urls per Jessie design
+            #   NOTE: When python provides you with a dictionary it does so with single quotes not double quotes as
+            #       I have indicated below. Single quotes are not recognized as valid json so json.dumps() must be used
+            #       to create a json string with double quotes.
+            # TODO: NOTE: I switched the True to "True" 20180829 to see if it was causing the JSON object issue
+            self.__json_definition = {"reportname": self.report_name_id,
+                                      "since": "CUSTOM",
+                                      "from": int(self.from_time),
+                                      "to": int(self.to_time),
+                                      "queries": [
+                                          {"resourceURIs": self.master_urls_list,
+                                           "metrics": ["RequestCount"]}
+                                      ],
+                                      "aggregationInterval": 60,
+                                      "metadata": {"temp": "True",
+                                                   "tempTimer": 1454109613248}
+                                      }
+
         @property
         def report_json_params(self):
             return self.__report_json_params
 
         @report_json_params.setter
         def report_json_params(self, value):
-            value.update(self.json_definition)
+            value.update({"usagereport": self.json_definition})
+            # print(f"Report Json Params: {value}")   # TESTING
             self.__report_json_params = value
 
     class ServiceObject(AdminObject):
@@ -378,11 +384,11 @@ def main():
         try:
             # Jessie discovered "verify" option and set to False to bypass the ssl issue
             response = requests.post(url=url, data=params, verify=False)
-            # print(f"Response Code: {response.status_code}")
         except Exception as e:
             print("Error in response from requests: {}".format(e))
             exit()
         else:
+            print(f"RESPONSE URL: {response.url}")
             try:
                 if "html" in response.headers["Content-Type"]:
                     raise NotJSONException
@@ -392,10 +398,10 @@ def main():
                 print(response)
                 exit()
             except NotJSONException as NJE:
-                print(f"Appears to be html, not json. Problem lies with ... ({NJE})")
+                print(f"Response appears to be html, not json.")
                 print(response.url)
                 print(response.headers)
-                print(response.text)
+                # print(response.text)
                 exit()
             return response_json
 
@@ -426,13 +432,11 @@ def main():
     def dt2ts(dt):
         return calendar.timegm(dt.utctimetuple())
 
-
-        # FUNCTIONALITY
+    # FUNCTIONALITY
     #   Need a machine to which to make a request. Select at random from 4 total since we are bypassing web adaptor.
     machine = SERVER_MACHINE_NAMES[create_random_int(upper_integer=len(SERVER_MACHINE_NAMES))]
-    # print(f"MACHINE: {machine}")
 
-    # Need a token to make secure requests
+    #   Need a token to make secure requests
     root_server_url = SERVER_ROOT_URL.format(machine_name=machine, port=SERVER_PORT_SECURE)
     generate_token_url = os.path.join(root_server_url, AdminObject.GENERATE_TOKEN_ENDING)
     token_params = create_params_for_request(token_action="getToken")
@@ -440,37 +444,31 @@ def main():
     token = search_json_for_key(response_json=token_response, search_key="token")
     print(f"Token: {token}")
 
-    # _____________________________________________
-    # token = getToken(USERNAME, PASSWORD, serverName, serverPort)
-    # if token == "":
-    #     print("Could not generate a token with the user name and password provided.")
-    #     return
-    # _____________________________________________
-
-    # Need to make a secure request for response as JSON to be able to access folders and services details
+    #   Need to make a secure request for response as JSON to be able to access folders and services details
     request_params_result = create_params_for_request(token_action=token)   # TODO: This basic kind of param creation occurs many times in code. Refactor ?
     admin_services_full_url = clean_url_slashes(os.path.join(root_server_url, AdminObject.ADMIN_SERVICES_ENDING))   # TODO: Refactorable. Added to AdminObject
     folders_request_response = get_response(url=admin_services_full_url, params=request_params_result)
 
     #   Need folder names list and to clean list; Remove System & Utilities, & append entry for root folder, per Jessie
-    folder_names_raw = search_json_for_key(response_json=folders_request_response, search_key="folders")
     #   Note: Noticed that Jessie also included 'GeoprocessingServices', but did not in statusdashboard script
+    folder_names_raw = search_json_for_key(response_json=folders_request_response, search_key="folders")
     remove_folders = ["System", "Utilities", "GeoprocessingServices"]
     folder_names_clean = list(set(folder_names_raw) - set(remove_folders))
     folder_names_clean.append("")
     folder_names_clean.sort()
 
-    #   Create a machine object for the selected ArcGIS Server machine.     WHY?
+    #   Create a machine object for the selected ArcGIS Server machine. To store related values in object.
     machine_object = MachineObject(machine_name=machine,
                                    root_url=root_server_url,
                                    token=token,
                                    folders=folder_names_clean)
     print(f"MACHINE: {machine_object}")
 
-    # TODO: previous functionality returned a list of all folder url's AND all service url's. Have folder names, need
-    #   TODO: url's. Also need all service url's
-    # list_of_folder_urls = [clean_url_slashes(os.path.join(machine_object.root_url, "arcgis/rest/services/", folder)) for folder in machine_object.folders_list]
-    list_of_folder_objects = [FolderObject(name=folder_name, root_machine_url=machine_object.root_url) for folder_name in machine_object.folder_names_list]
+    #   Need a single list containing all folder url's AND all service url's from within all of those folders.
+    #   It is passed to the server and indicates the resourceURIs for which metrics will be built in the query process
+    #   Use Folder objects to store folder urls and service objects containing urls
+    list_of_folder_objects = [FolderObject(name=folder_name, root_machine_url=machine_object.root_url) for folder_name
+                              in machine_object.folder_names_list]
 
     #   For each folder, need a list of service objects for services in that folder
     for fold_obj in list_of_folder_objects:
@@ -482,65 +480,41 @@ def main():
 
         # Need to store the inventory of services that are within each folder
         for service in services_json:
-            serv_obj = ServiceObject(folder=fold_obj.name, service_json=service, root_machine_url=machine_object.root_url)
+            serv_obj = ServiceObject(folder=fold_obj.name,
+                                     service_json=service,
+                                     root_machine_url=machine_object.root_url)
             fold_obj.service_objects_list.append(serv_obj)
 
     master_url_list = create_master_url_list(list_of_folder_objects)
 
-    # _____________________________________________
-    # Gets a list containing all folder url's AND all service url's from within all of those folders
-    # It is passed to the server in the statsDefinition object and indicates the resourceURIs for which metrics will
-    #   be built in the query process
-    # services = getServiceList(serverName, serverPort, token)
-    # _____________________________________________
-
-    # Need to create a new report.
+    # Need to create a new report object for use in generating report on server.
     basic_secure_params = create_params_for_request(token_action=machine_object.token)
-    report_object = ReportObject(root_machine_url=machine_object.root_url, master_urls_list=master_url_list, basic_request_json=basic_secure_params)
-
-    # _____________________________________________
-    # statsCreateReportURL = "https://{serverName}/imap/admin/usagereports/add".format(serverName=serverName)
-
-    # Create unique name for temp report
-    # reportName = uuid.uuid4().hex
-
-    # nowtime = datetime.datetime.utcnow()
-    # toTime = dt2ts(nowtime) * 1000
-    # fromTime = dt2ts(nowtime - datetime.timedelta(hours=48)) *1000
-    # print(int(toTime))
-    # print(int(fromTime))
-
-    # statsDefinition = { 'reportname' : reportName,
-    #                     'since' : 'CUSTOM',
-    #                     'from': int(fromTime),
-    #                     'to': int(toTime),
-    #                     'queries' : [{ 'resourceURIs' : services,
-    #                                    'metrics' : ['RequestCount'] }],
-    #                     'aggregationInterval' : 60,
-    #                     'metadata' : { 'temp' : True,
-    #                                    'tempTimer' : 1454109613248 } }
-    # _____________________________________________
-
-
-
-    # post_data = {'usagereport': report_object.json_definition}
-    # post_data = {'usagereport': json.dumps(report_object.json_definition)}
-    # print(type(report_object.json_definition))              # dict
-    # print(type(json.dumps(report_object.json_definition)))  # string
-    # report_params = create_params_for_request(token_action=machine_object.token, json_payload=post_data)
-
-
-
+    report_object = ReportObject(root_machine_url=machine_object.root_url,
+                                 master_urls_list=master_url_list,
+                                 basic_request_json=basic_secure_params)
 
     # Report is created on the server. No response is needed. The variable isn't used afterward for that reason.
     # FIXME: Is the report created by my process? NO
     #   TODO: If I manually paste the printed json into the web interface it works, status is success, and I can see it when I go to the machine.
     #   TODO: But, I can't hit the report by the url generated in my process for querying the report because my process never successfully creates it
-    print(f"Create URL: {report_object.report_url_create}")
-    print(f"JSON: \n{report_object.report_json_params}")
-    x = get_response(url=report_object.report_url_create, params=report_object.report_json_params)
+    # ERROR RESPONSE: {'status': 'error', 'messages': ['Use JSON in parameter usagereport.'], 'code': 500}
+    # IDEA: Could be use of single over double quotes,  ANSWER: Didn't make a difference in script
+    # When I attempt to hit 'add' using url with query string including token and format I get the following...
+    #   ERROR RESPONSE: {"status":"error","messages":["Only HTTP POST method is supported on this operation."]}
+    #   In the code I am using the requests.post so shouldn't be an issue with 'get' vs 'post'
+    # ERROR RESPONSE: {'status': 'error', 'messages': ["A JSONObject text must begin with '{' at character 1 of token"], 'code': 500}
+    #   Changed the True to "True" in the usage report json object
+
+    # print(f"Create URL: {report_object.report_url_create}")
+    # print(f"JSON: \n{report_object.report_json_params}")
+    # json_params_as_string_with_double_quotes = json.dumps(report_object.report_json_params)
+
+    usage_report_params = create_params_for_request(token_action=machine_object.token,
+                                                    json_payload=report_object.report_json_params)
+    print(usage_report_params)
+    x = get_response(url=report_object.report_url_create, params=usage_report_params)
     print(x)
-    print(x['status'])
+    # print(x['status'])
 
 
     # _____________________________________________
@@ -558,14 +532,18 @@ def main():
 
     # Need to get the report contents using the query url
     # TODO: This is from Jessie. Not certain of its function and if it will work with the machine name model
-    post_data_query = {'filter': {'machines': '*'}}
-    # post_data_query = {'filter': {'machines': [machine_object.machine_name]}}
-    report_query_params = create_params_for_request(token_action=machine_object.token, json_payload=post_data_query, format='csv')
+    # IDEA: run through using the machine name and then paste that json into browser to see if machine name works
+    # post_data_query = {'filter': {'machines': '*'}}
+    post_data_query = {'filter': {'machines': [machine_object.machine_name]}}
+    report_query_params = create_params_for_request(token_action=machine_object.token,
+                                                    json_payload=post_data_query,
+                                                    format='csv')
     print(report_object.report_url_query)
     print(report_query_params)
 
-
     exit()  #                                                                                                         WORKING UP TO HERE
+
+
     report_query_response = get_response(url=report_object.report_url_query, params=report_query_params)
 
     # Need to write the report content to csv file
