@@ -246,7 +246,7 @@ def main():
                                            "metrics": ["RequestCount"]}
                                       ],
                                       "aggregationInterval": 60,
-                                      "metadata": {"temp": "True",
+                                      "metadata": {"temp": True,
                                                    "tempTimer": 1454109613248}
                                       }
 
@@ -256,7 +256,14 @@ def main():
 
         @report_json_params.setter
         def report_json_params(self, value):
-            value.update({"usagereport": self.json_definition})
+            """
+            TODO
+            NOTE: Proved absolutely essential for the usagereport value to be processed by json.dumps(). Received an
+            error in response saying 'A JSONObject text must begin with '{' at character 1 of ...'
+            :param value:
+            :return:
+            """
+            value.update({"usagereport": json.dumps(self.json_definition)})
             # print(f"Report Json Params: {value}")   # TESTING
             self.__report_json_params = value
 
@@ -388,14 +395,22 @@ def main():
             print("Error in response from requests: {}".format(e))
             exit()
         else:
-            print(f"RESPONSE URL: {response.url}")
+            # print(f"RESPONSE URL: {response.url}")
+            # print(f"RESPONSE encoding: {response.encoding}")
+            # print(f"RESPONSE content type: {type(response.content)}")
             try:
+                # print(f"RESPONSE HEADERS: {response.headers}")
                 if "html" in response.headers["Content-Type"]:
                     raise NotJSONException
-                response_json = response.json()
+                elif "text/csv" in response.headers["Content-Type"]:
+                    result = response
+                elif "application/json" in response.headers["Content-Type"]:
+                    result = response.json()
             except json.decoder.JSONDecodeError as jde:
                 print("Error decoding response to json: {}".format(jde))
                 print(response)
+                print(response.url)
+                print(response.text)
                 exit()
             except NotJSONException as NJE:
                 print(f"Response appears to be html, not json.")
@@ -403,7 +418,7 @@ def main():
                 print(response.headers)
                 # print(response.text)
                 exit()
-            return response_json
+            return result
 
     def search_json_for_key(response_json, search_key):
         try:
@@ -419,14 +434,9 @@ def main():
             return value
 
     def write_response_to_csv(response, csv_path):
-        # Read the response as a csv
-        csvreader = csv.reader(response)
-        # Open csv file
-        with open(csv_path, 'wb') as csv_file_handler:
-            csvwriter = csv.writer(csv_file_handler, dialect='excel')
-            csvwriter.writerows(csvreader)
-            # csv_file_handler.close()
-            # response.close()
+        with open(csv_path, 'w') as csv_file_handler:
+            for line in response.text:
+                csv_file_handler.write(line)
         return
 
     def dt2ts(dt):
@@ -494,28 +504,9 @@ def main():
                                  basic_request_json=basic_secure_params)
 
     # Report is created on the server. No response is needed. The variable isn't used afterward for that reason.
-    # FIXME: Is the report created by my process? NO
-    #   TODO: If I manually paste the printed json into the web interface it works, status is success, and I can see it when I go to the machine.
-    #   TODO: But, I can't hit the report by the url generated in my process for querying the report because my process never successfully creates it
-    # ERROR RESPONSE: {'status': 'error', 'messages': ['Use JSON in parameter usagereport.'], 'code': 500}
-    # IDEA: Could be use of single over double quotes,  ANSWER: Didn't make a difference in script
-    # When I attempt to hit 'add' using url with query string including token and format I get the following...
-    #   ERROR RESPONSE: {"status":"error","messages":["Only HTTP POST method is supported on this operation."]}
-    #   In the code I am using the requests.post so shouldn't be an issue with 'get' vs 'post'
-    # ERROR RESPONSE: {'status': 'error', 'messages': ["A JSONObject text must begin with '{' at character 1 of token"], 'code': 500}
-    #   Changed the True to "True" in the usage report json object
-
-    # print(f"Create URL: {report_object.report_url_create}")
-    # print(f"JSON: \n{report_object.report_json_params}")
-    # json_params_as_string_with_double_quotes = json.dumps(report_object.report_json_params)
-
     usage_report_params = create_params_for_request(token_action=machine_object.token,
                                                     json_payload=report_object.report_json_params)
-    print(usage_report_params)
-    x = get_response(url=report_object.report_url_create, params=usage_report_params)
-    print(x)
-    # print(x['status'])
-
+    get_response(url=report_object.report_url_create, params=usage_report_params)
 
     # _____________________________________________
     # Create the json object to be posted to the server for creating the report
@@ -531,28 +522,29 @@ def main():
 
 
     # Need to get the report contents using the query url
-    # TODO: This is from Jessie. Not certain of its function and if it will work with the machine name model
-    # IDEA: run through using the machine name and then paste that json into browser to see if machine name works
-    # post_data_query = {'filter': {'machines': '*'}}
-    post_data_query = {'filter': {'machines': [machine_object.machine_name]}}
+    # TODO: This is from Jessie. Not certain if it will work with the machine name model
+    # NOTE: Like the usagereports dictionary it appears that any dictionary value that is a dictionary must be converted
+    #   to a string first using json.dumps()
+    post_data_query = {'filter': json.dumps({'machines': '*'})}
+    # Machine specific request, through browser interface, populated machine name as follows
+    #   {"machines": ["GIS-AGS-IMAP02P.MDGOV.MARYLAND.GOV"]}
+    # post_data_query = {'filter': {'machines': [machine_object.machine_name]}}
+
     report_query_params = create_params_for_request(token_action=machine_object.token,
                                                     json_payload=post_data_query,
                                                     format='csv')
-    print(report_object.report_url_query)
-    print(report_query_params)
-
-    exit()  #                                                                                                         WORKING UP TO HERE
-
-
     report_query_response = get_response(url=report_object.report_url_query, params=report_query_params)
 
     # Need to write the report content to csv file
+    print("writing csv")
     write_response_to_csv(response=report_query_response, csv_path=CSV_OUTPUT_FILE_PATH)
 
     # Need to delete the report from the server to reduce bloat
+    print("deleting report")
     report_delete_params = create_params_for_request(token_action=machine_object.token)
     get_response(url=report_object.report_url_delete, params=report_delete_params)
 
+    # exit()  #                                                                                                         WORKING UP TO HERE
 
     # TODO: Why is this needed?
     # _____________________________________________
