@@ -1,38 +1,22 @@
 # Export total number of requests for all services in a site
 # ArcGIS Server 10.3 or higher
 
-import json
-
-# For time-based functions
-import time
-import uuid
-import datetime
-import calendar
-
-# For system tools
-import sys
-import os
-
-# For reading passwords without echoing
-import getpass
-
-# For writing csv files
-import csv
-
-import configparser
-import random
-
-import requests
-# urllib3 is included in requests but to manage the InsecureRequestWarning it was also imported directly
-import urllib3
-from urllib3.exceptions import InsecureRequestWarning
-# Without disabled warnings, every request would print a red warning. This is because we have chosen
-#   'verify=False' when making requests to secure services.
-urllib3.disable_warnings(InsecureRequestWarning)
-
-
-# Defines the entry point into the script
 def main():
+    import calendar
+    import configparser
+    import datetime
+    import json
+    import os
+    import random
+    import requests
+    import uuid
+
+    # urllib3 is included in requests but to manage the InsecureRequestWarning it was also imported directly
+    import urllib3
+    from urllib3.exceptions import InsecureRequestWarning
+    # Without disabled warnings, every request would print a red warning. This is because we have chosen
+    #   'verify=False' when making requests to secure services.
+    urllib3.disable_warnings(InsecureRequestWarning)
 
     # VARIABLES
     _ROOT_PROJECT_PATH = os.path.dirname(__file__)
@@ -508,19 +492,6 @@ def main():
                                                     json_payload=report_object.report_json_params)
     get_response(url=report_object.report_url_create, params=usage_report_params)
 
-    # _____________________________________________
-    # Create the json object to be posted to the server for creating the report
-    # postdata = {'usagereport': json.dumps(statsDefinition)}
-
-    # Report is created on the server. No response is needed. The variable isn't used afterward for that reason.
-    # createReportResult = postAndLoadJSON(statsCreateReportURL, token, postdata)
-
-    # Query the newly created report. The 'data' word must cause the contents to be accessed and returned
-    # statsQueryReportURL = "https://{serverName}/imap/admin/usagereports/{reportName}/data".format(serverName=serverName,
-    #                                                                                               reportName=reportName)
-    # _____________________________________________
-
-
     # Need to get the report contents using the query url
     # TODO: This is from Jessie. Not certain if it will work with the machine name model
     # NOTE: Like the usagereports dictionary it appears that any dictionary value that is a dictionary must be converted
@@ -528,7 +499,6 @@ def main():
     post_data_query = {'filter': json.dumps({'machines': '*'})}
     # Machine specific request, through browser interface, populated machine name as follows
     #   {"machines": ["GIS-AGS-IMAP02P.MDGOV.MARYLAND.GOV"]}
-    # post_data_query = {'filter': {'machines': [machine_object.machine_name]}}
 
     report_query_params = create_params_for_request(token_action=machine_object.token,
                                                     json_payload=post_data_query,
@@ -544,198 +514,9 @@ def main():
     report_delete_params = create_params_for_request(token_action=machine_object.token)
     get_response(url=report_object.report_url_delete, params=report_delete_params)
 
-    # exit()  #                                                                                                         WORKING UP TO HERE
-
-    # TODO: Why is this needed?
-    # _____________________________________________
-    # post_data_query = {'filter': {'machines': '*'}}
-
-    # Make call to query report url, get the report content, and write the report to a csv file at the indicated path
-    # postAndLoadCSV(statsQueryReportURL, CSV_OUTPUT_FILE_PATH, token, post_data_query)
-
-    # Cleanup (delete) statistics report so that it can be recreated the next time.
-    #   Build the url and make the call to the url for deleting.
-    # print("Before delete")
-    # statsDeleteReportURL = "https://{serverName}/imap/admin/usagereports/{reportName}/delete".format(serverName=serverName,
-    #                                                                                                  reportName=reportName)
-    # deleteReportResult = postAndLoadJSON(statsDeleteReportURL, token)
-    # _____________________________________________
-
-
     print("Export complete!")
     return
 
 
-
-
-
-
-
-
-# A function that makes an HTTP POST request and returns the result JSON object
-# def postAndLoadCSV(url, fileName, token = None, postdata = None):
-#     """
-#     Appears to create a json object containing a token and format = csv, hits the url (the query report url per its
-#     only implementation), open the output file, write the report content to the file, and close out.
-#     """
-#     if not postdata:    # None evaluates to False
-#         postdata = {}
-#
-#     # Add token to POST data if not already present and supplied
-#     if token and 'token' not in postdata:
-#         postdata['token'] = token
-#
-#     # Add format specifier to POST data if not already present. This is where the format is set to csv.
-#     if 'f' not in postdata:
-#         postdata['f'] = 'csv'
-#
-#     # Encode data and POST to server
-#     postdata = urllib.urlencode(postdata)
-#     response = urllib2.urlopen(url, data=postdata)
-#
-#     print('post data')
-#     if (response.getcode() != 200):
-#         response.close()
-#         raise Exception('Error performing request to {0}'.format(url))
-#
-#     # # Read the response as a csv
-#     # csvreader = csv.reader(response)
-#     #
-#     # # Open output file
-#     # output = open(fileName, 'wb')
-#     # csvwriter = csv.writer(output, dialect='excel')
-#     # csvwriter.writerows(csvreader)
-#     # output.close()
-#     # response.close()
-#     #
-#     # return
-
-
-# A function that makes an HTTP POST request and returns the result JSON object
-# def postAndLoadJSON(url, token=None, postdata=None):
-#     """
-#     Appears to make a request to server url, includes token and format as json, and returns response as json object.
-#     """
-#     if not postdata:
-#         postdata = {}
-#
-#     # Add token to POST data if not already present and supplied
-#     if token and 'token' not in postdata:
-#         postdata['token'] = token
-#
-#     # Add JSON format specifier to POST data if not already present
-#     if 'f' not in postdata:
-#         postdata['f'] = 'json'
-#
-#     # Encode data and POST to server
-#     postdata = urllib.urlencode(postdata)
-#     response = urllib2.urlopen(url, data=postdata)
-#     print('post data')
-#
-#     if response.getcode() != 200:
-#         response.close()
-#         raise Exception('Error performing request to {0}'.format(url))
-#
-#     data = response.read()
-#     response.close()
-#     print('postandloadjson')
-#
-#     # Check that data returned is not an error object
-#     if not assertJsonSuccess(data):
-#         raise Exception("Error returned by operation. " + data)
-#
-#     # Deserialize response into Python object
-#     return json.loads(data)
-
-
-# A function that enumerates all services in all folders on site
-# def getServiceList(serverName, serverPort, token):
-#     """
-#     Appears to hit the root system folder, get a list of all folder names, hit each folder url, get a list of service
-#     objects, and build a list of folder url's AND all service
-#     url's.
-#     TODO: Unclear why the folder url and the service urls are all in one list ?
-#     :return: list of folder urls AND all service urls
-#     """
-#     rooturl = "https://" + serverName + "/imap/admin/services".format(serverName, serverPort)
-#
-#     # Making call to admin services url, including a token and format = json, getting back root content as json
-#     root = postAndLoadJSON(rooturl, token)
-#
-#     # Services list will hold folder url's and exact url's to all services
-#     services = []
-#
-#     # Accessing the folders using the 'folders' key in the root json. Is a list of folder names.
-#     folders = root['folders']
-#
-#     # Iterating through folders
-#     for folderName in folders:
-#
-#         # Exclude certain folders
-#         if folderName != "System" and folderName != "Utilities" and folderName != "GeoprocessingServices":
-#
-#             # Append url for each folder of services to a list
-#             services.append("services/" + folderName)
-#
-#             # Builds a folder url based on the imap/admin/services root
-#             folderurl = "{rooturl}/{folderName}".format(rooturl=rooturl, folderName=folderName)
-#
-#             # Make a request to server for contents of folder and get response as json object
-#             folder = postAndLoadJSON(folderurl, token)
-#
-#             # For each service object in the folder, append the full url for the service specific to its service type
-#             for service in folder['services']:
-#                 # eg URL - https://geodata.md.gov/imap/admin/services/Agriculture/MD_AgriculturalDesignations.MapServer
-#                 services.append("services/{folderName}/{serviceName}.{serviceType}".format(folderName=folderName,
-#                                                                                            serviceName=service['serviceName'],
-#                                                                                            serviceType=service['type']))
-#
-#     return services
-    
-#A function to generate a token given username, password and the adminURL.
-# def getToken(username, password, serverName, serverPort):
-#     # Token URL is typically https://server[:port]/arcgis/admin/generateToken
-#     tokenURL = "/imap/admin/generateToken"
-#
-#     # URL-encode the token parameters
-#     params = urllib.urlencode({'username': username, 'password': password, 'client': 'requestip', 'f': 'json'})
-#
-#     headers = {"Content-type": "application/x-www-form-urlencoded", "Accept": "text/plain"}
-#
-#     # Connect to URL and post parameters
-#     httpsConn = httplib.HTTPSConnection(serverName, serverPort)
-#     httpsConn.request("POST", tokenURL, params, headers)
-#
-#     # Read response
-#     response = httpsConn.getresponse()
-#     print(response.read())
-#     if (response.status != 200):
-#         httpsConn.close()
-#         print("Error while fetching tokens from the admin URL. Please check the URL and try again.")
-#         return
-#     else:
-#         data = response.read()
-#         httpsConn.close()
-#
-#         # Check that data returned is not an error object
-#         if not assertJsonSuccess(data):
-#             return
-#
-#         # Extract the token from it
-#         token = json.loads(data)
-#         return token['token']
-#
-# #A function that checks that the input JSON object
-#  is not an error object.    
-# def assertJsonSuccess(data):
-#     obj = json.loads(data)
-#     if 'status' in obj and obj['status'] == "error":
-#         print("Error: JSON object returns an error. " + str(obj))
-#         return False
-#     else:
-#         return True
-    
-        
-# Script start
 if __name__ == "__main__":
     main()
