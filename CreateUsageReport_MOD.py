@@ -488,6 +488,7 @@ def main():
                                  basic_request_json=basic_secure_params)
 
     # Report is created on the server. No response is needed. The variable isn't used afterward for that reason.
+    print("Creating Report")
     usage_report_params = create_params_for_request(token_action=machine_object.token,
                                                     json_payload=report_object.report_json_params)
     get_response(url=report_object.report_url_create, params=usage_report_params)
@@ -496,26 +497,25 @@ def main():
     # TODO: This is from Jessie. Not certain if it will work with the machine name model
     # NOTE: Like the usagereports dictionary it appears that any dictionary value that is a dictionary must be converted
     #   to a string first using json.dumps()
-    post_data_query = {'filter': json.dumps({'machines': '*'})}
-    # Machine specific request, through browser interface, populated machine name as follows
+    # NOTE: Machine specific request, through browser interface, populated machine name as follows
     #   {"machines": ["GIS-AGS-IMAP02P.MDGOV.MARYLAND.GOV"]}
-
+    print("Querying Report")
+    post_data_query = {'filter': json.dumps({'machines': '*'})}
     report_query_params = create_params_for_request(token_action=machine_object.token,
                                                     json_payload=post_data_query,
                                                     format='csv')
     report_query_response = get_response(url=report_object.report_url_query, params=report_query_params)
 
     # Need to write the report content to csv file
-    print("writing csv")
+    print("Writing CSV")
     write_response_to_csv(response=report_query_response, csv_path=CSV_OUTPUT_FILE_PATH)
 
     # Need to delete the report from the server to reduce bloat
-    print("deleting report")
+    print("Deleting Report")
     report_delete_params = create_params_for_request(token_action=machine_object.token)
     get_response(url=report_object.report_url_delete, params=report_delete_params)
 
-    print("Export complete!")
-    return
+    print("Complete!")
 
 
 if __name__ == "__main__":
