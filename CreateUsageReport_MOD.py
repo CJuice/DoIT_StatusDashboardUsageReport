@@ -353,7 +353,6 @@ def main():
 
     def create_master_url_list(objects_list):
         # need a list of folder url's
-        # folder_urls = [obj.folder_machine_url for obj in objects_list]
         master_list = []
         for obj_fold in objects_list:
             master_list.append(obj_fold.folder_machine_url)
@@ -388,12 +387,8 @@ def main():
             print("Error in response from requests: {}".format(e))
             exit()
         else:
-            # print(f"RESPONSE URL: {response.url}")
-            # print(f"RESPONSE encoding: {response.encoding}")
-            # print(f"RESPONSE content type: {type(response.content)}")
             result = None
             try:
-                # print(f"RESPONSE HEADERS: {response.headers}")
                 if "html" in response.headers["Content-Type"]:
                     raise NotJSONException
                 elif "text/csv" in response.headers["Content-Type"]:
