@@ -77,6 +77,7 @@ def main():
             self.name = name
             self.folder_machine_url = name
             self.folder_geodata_url = name
+            self.folder_short_services_url = name
             self.services_json = None
             self.service_objects_list = []
 
@@ -96,12 +97,21 @@ def main():
         def folder_machine_url(self, value):
             self.__folder_machine_url = f"{self.rest_url_machine_root}/{value}"
 
+        @property
+        def folder_short_services_url(self):
+            return self.__folder_short_service_url
+
+        @folder_short_services_url.setter
+        def folder_short_services_url(self, value):
+            self.__folder_short_service_url = f"services/{value}"
+
         def __str__(self):
             """
             Overriding the __str__ builtin to control the appearance of the object print-out for readability.
             :return: string
             """
-            return f"FOLDER: {self.name}-->\n\turl on machine = {self.folder_machine_url}\n\turl on geodata = {self.folder_geodata_url}"
+            return f"FOLDER: {self.name}-->\n\turl on machine = {self.folder_machine_url}\n\t" \
+                   f"url on geodata = {self.folder_geodata_url}"
 
     class MachineObject:
         """Created to store machine properties and values."""
@@ -275,6 +285,7 @@ def main():
             self.service_type = service_json
             self.service_url = None
             self.service_admin_properties_url = None
+            self.service_short_services_url = None
 
         @property
         def service_name(self):
@@ -313,6 +324,14 @@ def main():
         @service_url.setter
         def service_url(self, value):
             self.__service_url = f"{self.rest_url_machine_root}/{self.service_name}/{self.service_type}"
+
+        @property
+        def service_short_services_url(self):
+            return self.__service_short_services_url
+
+        @service_short_services_url.setter
+        def service_short_services_url(self, value):
+            self.__service_short_services_url = f"services/{self.service_name}.{self.service_type}"
 
         def __str__(self):
             """
@@ -355,9 +374,19 @@ def main():
         # need a list of folder url's
         master_list = []
         for obj_fold in objects_list:
-            master_list.append(obj_fold.folder_machine_url)
+            # ORIGINAL
+            # master_list.append(obj_fold.folder_machine_url)
+            # JESSIE FIX
+            # folder_str = str(obj_fold.folder_machine_url).replace(root_server_url, "").replace("/arcgis/rest/", "")
+            # master_list.append(folder_str)
+            master_list.append(obj_fold.folder_short_services_url)
             for obj_serv in obj_fold.service_objects_list:
-                master_list.append(obj_serv.service_admin_properties_url)
+                # ORIGINAL
+                # master_list.append(obj_serv.service_admin_properties_url)
+                # JESSIE FIX
+                # service_str = str(obj_serv.service_admin_properties_url).replace(root_server_url, "").replace("/arcgis/admin/", "")
+                # master_list.append(service_str)
+                master_list.append(obj_serv.service_short_services_url)
         return master_list
 
     def create_random_int(upper_integer):
