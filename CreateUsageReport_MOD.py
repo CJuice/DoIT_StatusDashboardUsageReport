@@ -1,9 +1,15 @@
-"""TODO: Doc strings for entire script"""
+""""""
 # Export total number of requests for all services in a site
 # ArcGIS Server 10.3 or higher
 
 
 def main():
+    """
+    Run the script if it is the primary call and not an import to another script
+    :return: None
+    """
+
+    # IMPORTS
     import calendar
     import configparser
     import datetime
@@ -12,11 +18,10 @@ def main():
     import random
     import requests
     import uuid
-
-    # urllib3 is included in requests but to manage the InsecureRequestWarning it was also imported directly
+    # NOTE: Believe urllib3 is included in requests module but to manage InsecureRequestWarning was also imported
     import urllib3
     from urllib3.exceptions import InsecureRequestWarning
-    # Without disabled warnings, every request would print a red warning. This is because we have chosen
+    # NOTE: Without disabled warnings, every request would print a red warning. This is because we have chosen
     #   'verify=False' when making requests to secure services.
     urllib3.disable_warnings(InsecureRequestWarning)
 
@@ -29,7 +34,6 @@ def main():
     # CSV_OUTPUT_FILE_PATH = r"D:\inetpub\wwwroot\DOIT\StatusDashboard\temp\UsageStatistics.csv"  # PRODUCTION.
     # *********DOIT folder DNE on imap01d
     CSV_OUTPUT_FILE_PATH = r"D:\scripts\StatusDashboard\UsageReport_MOD_testing\UsageStatistics.csv"    # TESTING
-
     PASSWORD = config["ags_server_credentials"]["password"]
     SERVER_MACHINE_NAMES = {0: config['ags_prod_machine_names']["machine1"],
                             1: config['ags_prod_machine_names']["machine2"],
@@ -41,12 +45,25 @@ def main():
 
     # CLASSES
     class AdminObject:
+        """
+        The AdminObject class represents the needed functionality of ArcGIS Server admin access. Not all functionality
+        is represented, only that which is relevant to the needed processes. There are portions of url's that are
+        constants. These are made available to child classes that inherit AdminObject.
+        """
+
         ADMIN_SERVICES_ENDING = "arcgis/admin/services"
+        GENERATE_TOKEN_ENDING = "arcgis/admin/generateToken"
         GEODATA_ROOT = "https://geodata.md.gov/imap/rest/services"
         REST_URL_ENDING = "arcgis/rest/services"
-        GENERATE_TOKEN_ENDING = "arcgis/admin/generateToken"
 
         def __init__(self, root_machine_url):
+            """
+            Instantiate the AdminObject, setting the admin_services_url and the rest_url_machine_root attributes
+            using the setter/getter mutator methods.
+
+            :param root_machine_url: url specific to the machine being accessed in the requests. In bypassing the web
+            adaptor and making machine specific calls this became necessary
+            """
             self.admin_services_url = root_machine_url
             self.rest_url_machine_root = root_machine_url
 
@@ -68,17 +85,29 @@ def main():
 
     class FolderObject(AdminObject):
         """
-        Example: 'https://gis-ags-imap02p.mdgov.maryland.gov:6443/arcgis/rest/services/Weather'
-        FOLDER_URL_ENDING = "{folder}"
+        The FolderObject class represents a service folder in the server services and inherits from AdminObject.
+
+        This class overrides the __str__ builtin from AdminObject to provide meaningful printing of the object.
+        Machine Name Path Example: 'https://gis-ags-imap02p.mdgov.maryland.gov:6443/arcgis/rest/services/Weather'
         """
 
         def __init__(self, name, root_machine_url):
+            """
+            Instantiate the FolderObject, first instantiating the inherited AdminObject using super(), and set
+            attributes using the setter/getter mutator methods. Name is the name of the folder, folder_machine_url is
+            the url to the folder using the machine path, folder_geodata_url is the url to the folder using the
+            geodata.md.gov path, folder_short_services_url is the short/relative path for making calls for services when
+            building usage report (doesn't reference the machine or geodata root portion of the url), and
+            service_objects_list is a list intended for storing all ServiceObject objects for services within a folder.
+            :param name: Name of the services folder
+            :param root_machine_url: url for the machine, rather than the web adaptor path
+            """
             super().__init__(root_machine_url=root_machine_url)     # Needs to be instantiated before folder_url
             self.name = name
-            self.folder_machine_url = name
             self.folder_geodata_url = name
+            self.folder_machine_url = name
             self.folder_short_services_url = name
-            self.services_json = None
+            # self.services_json = None   # TODO: Used?
             self.service_objects_list = []
 
         @property
@@ -107,18 +136,27 @@ def main():
 
         def __str__(self):
             """
-            Overriding the __str__ builtin to control the appearance of the object print-out for readability.
+            Override the __str__ builtin to control the appearance of the object print-out for readability.
             :return: string
             """
             return f"FOLDER: {self.name}-->\n\turl on machine = {self.folder_machine_url}\n\t" \
                    f"url on geodata = {self.folder_geodata_url}"
 
     class MachineObject:
-        """Created to store machine properties and values."""
+        """
+        The MachineObject class represents a server machine and stores properties and values.
+
+        This class overrides the __str__ builtin to provide meaningful printing of the object.
+        """
 
         def __init__(self, machine_name, root_url, security_token, folder_names=None):
             """
-            Instantiate the machine objects
+            Instantiate the machine object, setting the machine name, the root machine url, the token for accessing
+            secure services, and the list for storing folder names.
+            Machine name is name of the server machine and is necessary because the web adaptor is being bypassed
+            and the servers are being hit directly using their machine name. The root url for the machine uses the
+            machine name. The token is the key created by the server for accessing secure services. The folder names
+            is a list of service folder names on the machine.
             :param machine_name: name of the server machine
             :param root_url: root url for machine
             :param security_token: the token generated by the machine for secure access
@@ -139,109 +177,60 @@ def main():
 
     class NotJSONException(Exception):
         """Raised when the url for the request is malformed for our purposes and the server returns html, not json"""
+
         def __init__(self):
+            """Instantiate the object and pass"""
             pass
 
         def __str__(self):
+            """Override the builtin __str__ method"""
             return "Content is not in JSON format. CJuice"
 
     class ReportObject(AdminObject):
         """
-        'add' is trigger for report creation
-        'data' is trigger for querying
-        'delete' is trigger for deleting report
+        The ReportObject class is for service usage reports from ArcGIS Servers. Not all functionality
+        is represented, only that which is relevant to the needed processes. There are portions of url's that are
+        constants.
+        Notes: 'add' is trigger for report creation, 'data' is trigger for querying, 'delete' is trigger for
+        deleting report
         """
+
         USAGE_REPORT_ENDING__CREATE = "arcgis/admin/usagereports/add"
         USAGE_REPORT_ENDING__QUERY = "arcgis/admin/usagereports/{report_name}/data"
         USAGE_REPORT_ENDING__DELETE = "arcgis/admin/usagereports/{report_name}/delete"
 
         def __init__(self, root_machine_url, master_urls_list, basic_request_json):
+            """
+            Instantiate the ReportObject, setting the (order preserves dependencies)
+            :param root_machine_url: root url for machine
+            :param master_urls_list: list of master folder and service urls
+            :param basic_request_json: json including token and format
+            """
             super().__init__(root_machine_url)
             self.report_name_id = uuid.uuid4().hex
             self.now_time = datetime.datetime.utcnow()
-            self.to_time = ReportObject.dt2ts(self.now_time) * 1000
-            self.from_time = ReportObject.dt2ts(self.now_time - datetime.timedelta(hours=48)) * 1000
+            self.to_time = ReportObject.datetime_to_timestamp_seconds(self.now_time) * 1000
+            self.from_time = ReportObject.datetime_to_timestamp_seconds(self.now_time - datetime.timedelta(hours=48)) * 1000
+            self.usage_reports_url__create = root_machine_url
+            self.usage_reports_url__delete = root_machine_url
+            self.usage_reports_url__query = root_machine_url
+            self.report_url_create = None
+            self.report_url_delete = None
+            self.report_url_query = None
             self.master_urls_list = master_urls_list
             self.json_definition = None
             self.report_json_params = basic_request_json
             # self.report_query_params = None
-            self.usage_reports_url__create = root_machine_url
-            self.usage_reports_url__query = root_machine_url
-            self.usage_reports_url__delete = root_machine_url
-            self.report_url_create = None
-            self.report_url_query = None
-            self.report_url_delete = None
 
-        @property
-        def report_url_create(self):
-            return self.__report_url_create
-
-        @report_url_create.setter
-        def report_url_create(self, value):
-            create_url = self.usage_reports_url__create.format(report_name=self.report_name_id)
-            # self.__report_url_delete = self.usage_reports_url__delete.format(report_name=self.report_name_id)
-            self.__report_url_create = create_url
-
-        @property
-        def report_url_delete(self):
-            return self.__report_url_delete
-
-        @report_url_delete.setter
-        def report_url_delete(self, value):
-            delete_url = self.usage_reports_url__delete.format(report_name=self.report_name_id)
-            # self.__report_url_delete = self.usage_reports_url__delete.format(report_name=self.report_name_id)
-            self.__report_url_delete = delete_url
-
-        @property
-        def report_url_query(self):
-            return self.__report_url_query
-
-        @report_url_query.setter
-        def report_url_query(self, value):
-            query_url = self.usage_reports_url__query.format(report_name=self.report_name_id)
-            # self.__report_url_query = self.usage_reports_url__query.format(report_name=self.report_name_id)
-            self.__report_url_query = query_url
-
-        @property
-        def json_definition(self):
-            return self.__json_definition
-
-        @json_definition.setter
-        def json_definition(self, value):
-            # Create report JSON definition. This json object goes into the json object submitted to the server.
-            #   The object details indicate what is to be put into the report when it is built
-            #   'resourceURIs' is a list of all service and folder urls per Jessie design
-            #   NOTE: When python provides you with a dictionary it does so with single quotes not double quotes as
-            #       I have indicated below. Single quotes are not recognized as valid json so json.dumps() must be used
-            #       to create a json string with double quotes.
-            self.__json_definition = {"reportname": self.report_name_id,
-                                      "since": "CUSTOM",
-                                      "from": int(self.from_time),
-                                      "to": int(self.to_time),
-                                      "queries": [
-                                          {"resourceURIs": self.master_urls_list,
-                                           "metrics": ["RequestCount"]}
-                                      ],
-                                      "aggregationInterval": 60,
-                                      "metadata": {"temp": True,
-                                                   "tempTimer": 1454109613248}
-                                      }
-
-        @property
-        def report_json_params(self):
-            return self.__report_json_params
-
-        @report_json_params.setter
-        def report_json_params(self, value):
+        @staticmethod
+        def datetime_to_timestamp_seconds(date_time_object):
             """
-            NOTE: Proved absolutely essential for the usagereport value to be processed by json.dumps(). Received an
-            error in response saying 'A JSONObject text must begin with '{' at character 1 of ...'
-            :param value:
-            :return:
+            Take a date time object and returns the corresponding Unix timestamp value, assuming an epoch of 1970
+
+            :param date_time_object: datetime object
+            :return: seconds as integer
             """
-            value.update({"usagereport": json.dumps(self.json_definition)})
-            # print(f"Report Json Params: {value}")   # TESTING
-            self.__report_json_params = value
+            return calendar.timegm(date_time_object.utctimetuple())
 
         @property
         def usage_reports_url__create(self):
@@ -267,15 +256,80 @@ def main():
         def usage_reports_url__query(self, value):
             self.__usage_reports_url__query = f"{value}/{ReportObject.USAGE_REPORT_ENDING__QUERY}"
 
-        @staticmethod
-        def dt2ts(date_time_object):
-            # Is a function Jessie created.
-            return calendar.timegm(date_time_object.utctimetuple())
+        @property
+        def report_url_create(self):
+            return self.__report_url_create
+
+        @report_url_create.setter
+        def report_url_create(self, value):
+            create_url = self.usage_reports_url__create.format(report_name=self.report_name_id)
+            self.__report_url_create = create_url
+
+        @property
+        def report_url_delete(self):
+            return self.__report_url_delete
+
+        @report_url_delete.setter
+        def report_url_delete(self, value):
+            delete_url = self.usage_reports_url__delete.format(report_name=self.report_name_id)
+            self.__report_url_delete = delete_url
+
+        @property
+        def report_url_query(self):
+            return self.__report_url_query
+
+        @report_url_query.setter
+        def report_url_query(self, value):
+            query_url = self.usage_reports_url__query.format(report_name=self.report_name_id)
+            self.__report_url_query = query_url
+
+        @property
+        def json_definition(self):
+            return self.__json_definition
+
+        @json_definition.setter
+        def json_definition(self, value):
+            """
+            Create usage report JSON definition. This json object goes into the json object submitted to the server. The
+            object details indicate what is to be put into the report when it is built. 'resourceURIs' is a list of
+            all service and folder urls per Jessie design and she may have borrowed the code from ESRI demo
+
+            :param value:
+            :return:
+            """
+
+            self.__json_definition = {"reportname": self.report_name_id,
+                                      "since": "CUSTOM",
+                                      "from": int(self.from_time),
+                                      "to": int(self.to_time),
+                                      "queries": [
+                                          {"resourceURIs": self.master_urls_list,
+                                           "metrics": ["RequestCount"]}
+                                      ],
+                                      "aggregationInterval": 60,
+                                      "metadata": {"temp": True,
+                                                   "tempTimer": 1454109613248}
+                                      }
+
+        @property
+        def report_json_params(self):
+            return self.__report_json_params
+
+        @report_json_params.setter
+        def report_json_params(self, value):
+            """
+            NOTE: Proved absolutely essential for the usagereport value to be processed by json.dumps(). Received an
+            error in response saying 'A JSONObject text must begin with '{' at character 1 of ...'
+            :param value: json including the token and format
+            :return:
+            """
+            value.update({"usagereport": json.dumps(self.json_definition)})
+            self.__report_json_params = value
 
     class ServiceObject(AdminObject):
         """
-        Example: 'https://gis-ags-imap02p.mdgov.maryland.gov:6443/arcgis/rest/services/Weather/MD_StormSurge/MapServer'
-        REST_URL_END = "{folder}/{service_name}/{type}
+        The ServiceObject class is for storing values related to an ArcGIS server service in a services folder and
+        inherits from AdminObject.
         """
 
         def __init__(self, folder, service_json, root_machine_url):
