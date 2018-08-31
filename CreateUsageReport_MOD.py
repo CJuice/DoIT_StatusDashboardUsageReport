@@ -1,11 +1,28 @@
-""""""
-# Export total number of requests for all services in a site
-# ArcGIS Server 10.3 or higher
+"""
+Creates, queries, and deletes a usage report on the total number of requests for all services in a site,
+by machine specific calls rather than using the web adaptor.
+
+This script is uniquely designed to access the ArcGIS Server servers (machines) in our iMAP 3.0 environment by their
+machine name rather than going through the Web Adaptor. When we moved to ESRI's 10.6 environment the previous script
+failed and we encountered errors related to tokens and client mismatching. A valid, working token, would be rejected
+randomly and frequently. We first adapted using a while loop for handling failures. The loop caused repeated calls
+until a call when through and this is how we bypassed the issue. The issue appeared on multiple scripts so an overhaul
+was performed and we abandoned calls to the web adaptor and instead hit the machiens by their direct path referencing
+their name rather than using the domain.
+Contains AdminObject, FolderObject, MachineObject, ReportObject, ServiceObject, and NotJSONException classes.
+Original Design: JCahoon
+Overhaul Author: CJuice
+Date: 20180831
+Revised: This script is an overhaul of a previous script. The previous script used Python 2.7 and this script was
+ designed with 3.7. The functionality and steps of the previous script were recreated herein but the code now uses
+ the requests module and is consequently significantly different. This script was designed at ArcGIS Server 10.6
+Revised:
+"""
 
 
 def main():
     """
-    Run the script if it is the primary call and not an import to another script
+    Run the script if it is the primary call and not an import to another script.
     :return: None
     """
 
@@ -18,11 +35,11 @@ def main():
     import random
     import requests
     import uuid
-    # NOTE: Believe urllib3 is included in requests module but to manage InsecureRequestWarning was also imported
+    # NOTE: Believe urllib3 is included in requests module but to manage InsecureRequestWarning was also imported.
+    #   Without disabled warnings, every request would print a red warning. This is because we have chosen
+    #   'verify=False' when making requests to secure services.
     import urllib3
     from urllib3.exceptions import InsecureRequestWarning
-    # NOTE: Without disabled warnings, every request would print a red warning. This is because we have chosen
-    #   'verify=False' when making requests to secure services.
     urllib3.disable_warnings(InsecureRequestWarning)
 
     # VARIABLES
@@ -31,9 +48,9 @@ def main():
     config = configparser.ConfigParser()
     config.read(filenames=CREDENTIALS_PATH)
 
-    # CSV_OUTPUT_FILE_PATH = r"D:\inetpub\wwwroot\DOIT\StatusDashboard\temp\UsageStatistics.csv"  # PRODUCTION.
+    # CSV_OUTPUT_FILE_PATH = r"D:\inetpub\wwwroot\DOIT\StatusDashboard\temp\UsageStatistics.csv"               # PRODUCTION.
     # *********DOIT folder DNE on imap01d
-    CSV_OUTPUT_FILE_PATH = r"D:\scripts\StatusDashboard\UsageReport_MOD_testing\UsageStatistics.csv"    # TESTING
+    CSV_OUTPUT_FILE_PATH = r"D:\scripts\StatusDashboard\UsageReport_MOD_testing\UsageStatistics.csv"           # TESTING
     PASSWORD = config["ags_server_credentials"]["password"]
     SERVER_MACHINE_NAMES = {0: config['ags_prod_machine_names']["machine1"],
                             1: config['ags_prod_machine_names']["machine2"],
@@ -176,7 +193,11 @@ def main():
                    f"folders list = {self.folder_names_list}"
 
     class NotJSONException(Exception):
-        """Raised when the url for the request is malformed for our purposes and the server returns html, not json"""
+        """
+        Raise when the url for the request is malformed for our purposes and the server returns html, not json.
+
+        Inherits from Exception class.
+        """
 
         def __init__(self):
             """Instantiate the object and pass"""
@@ -201,7 +222,12 @@ def main():
 
         def __init__(self, root_machine_url, master_urls_list, basic_request_json):
             """
-            Instantiate the ReportObject, setting the (order preserves dependencies)
+            Instantiate the ReportObject, first instantiating the inherited AdminObject using super(), and set
+            attributes using the setter/getter mutator methods. Setting order preserves/honors dependencies. Sets a
+            unique name for the report, the current time, the time span of the report query using the to and from
+            attributes, the usage report urls for creating querying and deleting a report, the json definition for
+            specific report content, and the packaged json object for passing to the server for usagereport generation.
+
             :param root_machine_url: root url for machine
             :param master_urls_list: list of master folder and service urls
             :param basic_request_json: json including token and format
@@ -220,7 +246,6 @@ def main():
             self.master_urls_list = master_urls_list
             self.json_definition = None
             self.report_json_params = basic_request_json
-            # self.report_query_params = None
 
         @staticmethod
         def datetime_to_timestamp_seconds(date_time_object):
@@ -330,15 +355,23 @@ def main():
         """
         The ServiceObject class is for storing values related to an ArcGIS server service in a services folder and
         inherits from AdminObject.
+
+        This class overrides the __str__ builtin to provide meaningful printing of the object.
         """
 
         def __init__(self, folder, service_json, root_machine_url):
+            """
+            Instantiate the ServiceObject class, first instantiating the inherited AdminObject using super(), and set
+            attributes using the setter/getter mutator methods. Service name is the name of
+            the service and the type is limited to ESRI types (eg. FeatureService)
+            :param folder: name of the service folder
+            :param service_json: json content of services key in response json
+            :param root_machine_url: url for the machine, rather than the web adaptor path
+            """
             super().__init__(root_machine_url=root_machine_url)
             self.folder = folder
             self.service_name = service_json
             self.service_type = service_json
-            self.service_url = None
-            self.service_admin_properties_url = None
             self.service_short_services_url = None
 
         @property
@@ -351,6 +384,7 @@ def main():
                 self.__service_name = value['name']
             except KeyError as ke:
                 print(f"KeyError: 'name' not found in services json for this service. {ke}")
+                exit()
 
         @property
         def service_type(self):
@@ -362,22 +396,7 @@ def main():
                 self.__service_type = value['type']
             except KeyError as ke:
                 print(f"KeyError: 'type' not found in services json for this service. {ke}")
-
-        @property
-        def service_admin_properties_url(self):
-            return self.__service_admin_properties_url
-
-        @service_admin_properties_url.setter
-        def service_admin_properties_url(self, value):
-            self.__service_admin_properties_url = f"{self.admin_services_url}/{self.service_name}.{self.service_type}"
-
-        @property
-        def service_url(self):
-            return service.__service_url
-
-        @service_url.setter
-        def service_url(self, value):
-            self.__service_url = f"{self.rest_url_machine_root}/{self.service_name}/{self.service_type}"
+                exit()
 
         @property
         def service_short_services_url(self):
@@ -398,9 +417,10 @@ def main():
     def create_params_for_request(token_action=None, json_payload=None, response_format="json"):
         """
         Create parameters to be submitted with the request.
+        Various styles of requests are made and this function handles the variety and returns a dictionary
         :param token_action: route to be taken when creating the parameters
-        :param json_payload:
-        :param response_format:
+        :param json_payload: dictionary that will be added to basic json parameters
+        :param response_format: type of response from requests, json and csv are two examples
         :return: dictionary of parameters
         """
         if token_action is None and json_payload is None:
@@ -414,32 +434,17 @@ def main():
             values = {'token': token_action, 'f': response_format}
         return values
 
-    def clean_url_slashes(url):
-        """
-        Standardize the slashes when use of os.path.join() with forward slashes in url's.
-        os.path.join() uses back slashes '\' while http uses forward slashes '/'
-        :param url: url to be examined
-        :return: standardized url string
-        """
-        url = url.replace("\\", "/")
-        return url
-
     def create_master_url_list(objects_list):
-        # need a list of folder url's
+        """
+        Create a list of all urls using Folder objects and Service objects, stored in each Folder, and return the list.
+
+        :param objects_list:  list of Folder objects, containing Service objects
+        :return: list of strings that represent urls
+        """
         master_list = []
         for obj_fold in objects_list:
-            # ORIGINAL
-            # master_list.append(obj_fold.folder_machine_url)
-            # JESSIE FIX
-            # folder_str = str(obj_fold.folder_machine_url).replace(root_server_url, "").replace("/arcgis/rest/", "")
-            # master_list.append(folder_str)
             master_list.append(obj_fold.folder_short_services_url)
             for obj_serv in obj_fold.service_objects_list:
-                # ORIGINAL
-                # master_list.append(obj_serv.service_admin_properties_url)
-                # JESSIE FIX
-                # service_str = str(obj_serv.service_admin_properties_url).replace(root_server_url, "").replace("/arcgis/admin/", "")
-                # master_list.append(service_str)
                 master_list.append(obj_serv.service_short_services_url)
         return master_list
 
@@ -455,13 +460,14 @@ def main():
 
     def get_response(url, params):
         """
-        Submit a request with parameters to a url and inspect the response json for the specified key of interest.
+        Submit a request with parameters to a url and return the response.
+
         :param url: url to which to make a request
         :param params: parameters to accompany the request
-        :return: content of json if key present in response
+        :return: response from request
         """
-        # To deal with mixed path characters between url syntax and os.path.join use of "\"
-        url = clean_url_slashes(url)
+        # Protectionary action, to deal with mixed path characters between url syntax and os.path.join use of "\"
+        url = url.replace("\\", "/")
 
         try:
             # Jessie discovered "verify" option and set to False to bypass the ssl issue
@@ -488,11 +494,11 @@ def main():
                 print(f"Response appears to be html, not json.")
                 print(response.url)
                 print(response.headers)
-                # print(response.text)
                 exit()
             return result
 
     def search_json_for_key(response_json, search_key):
+        """Search json for a key of interest and return the found value or exit on Key or Type Error."""
         try:
             value = response_json[search_key]
         except KeyError as ke:
@@ -506,6 +512,7 @@ def main():
             return value
 
     def write_response_to_csv(response, csv_path):
+        """Write content to a csv file."""
         with open(csv_path, 'w') as csv_file_handler:
             for line in response.text:
                 csv_file_handler.write(line)
@@ -543,11 +550,11 @@ def main():
 
     #   Assign the folder names list to the machine object variable.
     machine_object.folder_names_list = folder_names_clean
-    print(f"MACHINE: {machine_object}")
+    print(machine_object)
 
     #   Need a single list containing all folder url's AND all service url's from within all of those folders.
     #   It is passed to the server and indicates the resourceURIs for which metrics will be built in the query process
-    #   Use Folder objects to store folder urls and service objects containing urls
+    #   Uses Folder objects to store folder urls and Service objects containing urls
     list_of_folder_objects = [FolderObject(name=folder_name, root_machine_url=machine_object.root_url) for folder_name
                               in machine_object.folder_names_list]
 
@@ -576,19 +583,11 @@ def main():
     print("Creating Report")
     usage_report_params = create_params_for_request(token_action=machine_object.token,
                                                     json_payload=report_object.report_json_params)
-
-    print(usage_report_params)  # TESTING
-    # FIXME: When I use the output params to create a report, and access the data I see "NODATA" in the columns in html
-    # view. It doesn't appear that the JSON is correct or that using the machine specific model is working as desired
-
     get_response(url=report_object.report_url_create, params=usage_report_params)
 
     # Need to get the report contents using the query url
-    # TODO: This is from Jessie. Not certain if it will work with the machine name model
-    # NOTE: Like the usagereports dictionary it appears that any dictionary value that is a dictionary must be converted
-    #   to a string first using json.dumps()
-    # NOTE: Machine specific request, through browser interface, populated machine name as follows
-    #   {"machines": ["GIS-AGS-IMAP02P.MDGOV.MARYLAND.GOV"]}
+    # NOTE: Like the 'usagereports' dictionary it appears that any dictionary 'value' that is a dictionary must be
+    #   converted to a string first; using json.dumps()
     print("Querying Report")
     post_data_query = {'filter': json.dumps({'machines': '*'})}
     report_query_params = create_params_for_request(token_action=machine_object.token,
@@ -602,7 +601,6 @@ def main():
 
     # Need to delete the report from the server to reduce bloat
     print("Deleting Report")
-    # report_delete_params = create_params_for_request(token_action=machine_object.token)
     get_response(url=report_object.report_url_delete, params=basic_secure_params)
 
     print("Complete!")
