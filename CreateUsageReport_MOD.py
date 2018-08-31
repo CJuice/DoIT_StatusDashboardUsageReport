@@ -50,7 +50,7 @@ def main():
 
     # CSV_OUTPUT_FILE_PATH = r"D:\inetpub\wwwroot\DOIT\StatusDashboard\temp\UsageStatistics.csv"               # PRODUCTION.
     # *********DOIT folder DNE on imap01d
-    CSV_OUTPUT_FILE_PATH = r"D:\scripts\StatusDashboard\UsageReport_MOD_testing\UsageStatistics.csv"           # TESTING
+    CSV_OUTPUT_FILE_PATH = f"{_ROOT_PROJECT_PATH}/UsageStatistics.csv"                                          # TESTING
     PASSWORD = config["ags_server_credentials"]["password"]
     SERVER_MACHINE_NAMES = {0: config['ags_prod_machine_names']["machine1"],
                             1: config['ags_prod_machine_names']["machine2"],
