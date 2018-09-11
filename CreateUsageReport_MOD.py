@@ -16,7 +16,8 @@ Date: 20180831
 Revised: This script is an overhaul of a previous script. The previous script used Python 2.7 and this script was
  designed with 3.7. The functionality and steps of the previous script were recreated herein but the code now uses
  the requests module and is consequently significantly different. This script was designed at ArcGIS Server 10.6
-Revised:
+Revised: 20180911, JC: Revised the create_master_url_list() function. Needed to skip the root 'services/' folder when
+    inventorying services. Added a check for this root folder.
 """
 
 
@@ -443,9 +444,13 @@ def main():
         """
         master_list = []
         for obj_fold in objects_list:
-            master_list.append(obj_fold.folder_short_services_url)
-            for obj_serv in obj_fold.service_objects_list:
-                master_list.append(obj_serv.service_short_services_url)
+            if obj_fold.folder_short_services_url == "services/":
+                # Need to bypass the initial root folder so as not to get the whole 'services/' item, JC 20180911
+                pass
+            else:
+                master_list.append(obj_fold.folder_short_services_url)
+                for obj_serv in obj_fold.service_objects_list:
+                    master_list.append(obj_serv.service_short_services_url)
         return master_list
 
     def create_random_int(upper_integer):
